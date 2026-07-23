@@ -139,7 +139,13 @@ export default function MenuTab() {
           if (p.status && p.status !== "ACTIVE") return false;
           if (!p.discount_price || p.discount_price <= 0) return false;
 
-          if (p.item_id && p.item_id === item.id) return true;
+          if (
+            p.item_id &&
+            (p.item_id === item.id ||
+              p.item_id.replace("item-rest-", "item-") === item.id.replace("item-rest-", "item-"))
+          ) {
+            return true;
+          }
           if (p.item_name && p.item_name.toLowerCase() === item.name.toLowerCase()) return true;
 
           return false;
