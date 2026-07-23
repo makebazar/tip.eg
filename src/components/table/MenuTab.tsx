@@ -401,27 +401,36 @@ export default function MenuTab() {
         .menu-qty-selector {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           background: #0f172a;
-          border-radius: 99px;
+          border-radius: 9999px;
           padding: 3px;
           color: #ffffff;
+          gap: 6px;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
         }
         .menu-qty-btn {
-          width: 24px;
-          height: 24px;
-          border-radius: 99px;
+          width: 26px;
+          height: 26px;
+          border-radius: 9999px;
           border: none;
           background: rgba(255, 255, 255, 0.2);
           color: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
           cursor: pointer;
+          transition: background-color 0.15s ease;
+        }
+        .menu-qty-btn:active {
+          background: rgba(255, 255, 255, 0.35);
         }
         .menu-qty-val {
           font-size: 13px;
-          font-weight: 700;
-          padding: 0 8px;
+          font-weight: 800;
+          min-width: 18px;
+          text-align: center;
         }
         .menu-add-btn {
           width: 32px;
@@ -634,12 +643,11 @@ export default function MenuTab() {
                                   <motion.div
                                     key="qty-selector"
                                     layout
-                                    initial={{ opacity: 0, scale: 0.8, width: 32, borderRadius: 16 }}
-                                    animate={{ opacity: 1, scale: 1, width: 84, borderRadius: 16 }}
-                                    exit={{ opacity: 0, scale: 0.8, width: 32, borderRadius: 16 }}
-                                    transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
                                     className="menu-qty-selector"
-                                    style={{ overflow: "hidden" }}
                                   >
                                     <button
                                       type="button"
