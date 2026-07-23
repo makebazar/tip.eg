@@ -544,38 +544,6 @@ export default function MenuTab() {
                       <div className="menu-item-img-wrapper">
                         <DishImage src={item.image} name={displayName} category={item.category} />
                         
-                        {/* Promo Badge Tag */}
-                        {item.original_price && (
-                          <div style={{ position: "absolute", top: "6px", left: "6px", zIndex: 6 }}>
-                            <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 6px", borderRadius: "4px", background: "#dc2626", color: "#ffffff", textTransform: "uppercase" }}>
-                              Offer
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Dietary Tags Overlay */}
-                        {item.dietary_tags && (
-                          <div style={{ position: "absolute", top: "8px", right: "8px", display: "flex", gap: "4px", flexWrap: "wrap", justifyContent: "flex-end", pointerEvents: "none", zIndex: 5 }}>
-                            {JSON.parse(item.dietary_tags).map((tag: string) => (
-                              <span
-                                key={tag}
-                                style={{
-                                  fontSize: "0.65rem",
-                                  fontWeight: 800,
-                                  padding: "3px 8px",
-                                  borderRadius: "99px",
-                                  background: "rgba(255, 255, 255, 0.95)",
-                                  color: "#0f172a",
-                                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                                  backdropFilter: "blur(4px)"
-                                }}
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        
                         {!isAvailable && (
                           <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>
                             <span style={{ background: "#ef4444", color: "#fff", fontSize: "0.7rem", fontWeight: 800, padding: "3px 8px", borderRadius: 4, textTransform: "uppercase" }}>
@@ -589,9 +557,40 @@ export default function MenuTab() {
                       <div className="menu-item-info">
                         <div className="menu-item-title-desc">
                           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <h4 className="menu-item-name">{displayName}</h4>
-                            
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                              <h4 className="menu-item-name">{displayName}</h4>
+                              
+                              {item.original_price && (
+                                <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 6px", borderRadius: "6px", background: "#fee2e2", color: "#dc2626", textTransform: "uppercase" }}>
+                                  Offer
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Dietary Badges in Card Content */}
+                            {item.dietary_tags && (
+                              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "1px" }}>
+                                {JSON.parse(item.dietary_tags).map((tag: string) => (
+                                  <span
+                                    key={tag}
+                                    style={{
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      padding: "2px 8px",
+                                      borderRadius: "6px",
+                                      background: "#f1f5f9",
+                                      color: "#475569",
+                                      border: "1px solid #e2e8f0"
+                                    }}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Weight, Calories, Spiciness */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "0.75rem", color: "#64748b", fontWeight: 600, marginTop: "2px" }}>
                               {item.weight_volume && (
                                 <span>{item.weight_volume}</span>
                               )}
