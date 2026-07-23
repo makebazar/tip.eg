@@ -364,13 +364,38 @@ export function AppStateProvider({
   };
 
   const addToCart = async (item: MenuItem) => {
+    const effectivePrice = item.price;
+    const originalPrice = (item as any).original_price;
+
     const existingDraft = draftItems.find(i => i.name === item.name);
     if (existingDraft && spotId) {
-      setCurrentBillItems(prev => prev.map(i => i.id === existingDraft.id ? { ...i, quantity: i.quantity + 1 } : i));
-      await updateDraftQuantity({ spotId, itemId: existingDraft.id!, deviceId, delta: 1 });
+      setCurrentBillItems(prev =>
+        prev.map(i =>
+          i.id === existingDraft.id
+            ? { ...i, price: effectivePrice, originalPrice, quantity: i.quantity + 1 }
+            : i
+        )
+      );
+      await updateDraftQuantity({
+        spotId,
+        itemId: existingDraft.id!,
+        deviceId,
+        delta: 1,
+        price: effectivePrice,
+        originalPrice
+      });
     } else {
       const newId = `draft_${Math.random().toString(36).substr(2, 9)}`;
-      const newDraft = { id: newId, name: item.name, price: item.price, originalPrice: (item as any).original_price, quantity: 1, deviceId, isDraft: true, status: "DRAFT" as const };
+      const newDraft = {
+        id: newId,
+        name: item.name,
+        price: effectivePrice,
+        originalPrice,
+        quantity: 1,
+        deviceId,
+        isDraft: true,
+        status: "DRAFT" as const
+      };
       setCurrentBillItems(prev => [...prev, newDraft]);
       if (spotId && waiter.restaurant_id) {
         await addItemToSpotCart({

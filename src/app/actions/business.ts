@@ -459,6 +459,10 @@ export async function addItemToSpotCart(data: {
           const existingDraftIndex = items.findIndex((i: any) => i.name === newItem.name && i.isDraft && i.deviceId === newItem.deviceId);
           if (existingDraftIndex >= 0) {
             items[existingDraftIndex].quantity += newItem.quantity;
+            items[existingDraftIndex].price = newItem.price;
+            if (newItem.originalPrice !== undefined) {
+              items[existingDraftIndex].originalPrice = newItem.originalPrice;
+            }
           } else {
             items.push(newItem);
           }
@@ -849,6 +853,8 @@ export async function updateDraftQuantity(data: {
   itemId: string;
   deviceId: string;
   delta: number;
+  price?: number;
+  originalPrice?: number;
 }) {
   try {
     let openBill = db.prepare("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1").get(data.spotId) as any;
@@ -859,6 +865,12 @@ export async function updateDraftQuantity(data: {
     
     if (itemIndex > -1) {
       items[itemIndex].quantity += data.delta;
+      if (data.price !== undefined) {
+        items[itemIndex].price = data.price;
+      }
+      if (data.originalPrice !== undefined) {
+        items[itemIndex].originalPrice = data.originalPrice;
+      }
       if (items[itemIndex].quantity <= 0) {
         items.splice(itemIndex, 1);
       }
