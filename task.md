@@ -1,0 +1,30 @@
+# Tasks — Complete Universal Refactoring
+
+- [x] Stop next dev server task (`task-139`)
+- [x] Database & Schema Migration
+  - [x] Implement tables and columns migration script in `db.ts`
+  - [x] Adapt seed data insertion to match new generalized models
+- [x] Refactor Server Actions
+  - [x] Rename `restaurant.ts` action file to `business.ts`
+  - [x] Update `auth.ts`, `payouts.ts`, and `business.ts` SQL queries
+- [x] Rename Context Provider
+  - [x] Rename `TableStateContext.tsx` to `AppStateContext.tsx`
+  - [x] Replace `TableState` naming with generic `AppState` inside context exports
+- [x] Refactor Guest Routes
+  - [x] Update `/t/[tableCode]/layout.tsx` to query new tables
+  - [x] Update `/t/[tableCode]/menu/page.tsx`
+  - [x] Update `/t/[tableCode]/cart/page.tsx`
+  - [x] Update `TippingForm.tsx` to display context-aware names
+- [x] Business Dashboard Refactor
+  - [x] Rename directory `src/app/restaurant` to `src/app/business`
+  - [x] Rename component `RestaurantDashboardClient.tsx` to `BusinessDashboardClient.tsx`
+  - [x] Update UI terminology (Settings, staff management, bill simulator)
+- [x] Individual Dashboard Refactor
+  - [x] Rename directory `src/app/waiter` to `src/app/individual`
+  - [x] Rename component `WaiterDashboardClient.tsx` to `IndividualDashboardClient.tsx`
+  - [x] Update UI terminology (Reviews, settings, payout forms)
+- [x] Middleware & Auth Guards
+  - [x] Update cookie reference matching and route guards in `middleware.ts`
+- [x] Verification
+  - [x] Run `npm run build` to verify compile succeeds
+  - [x] Start dev server and perform manual checks
