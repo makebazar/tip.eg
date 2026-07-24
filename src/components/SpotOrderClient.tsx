@@ -28,7 +28,7 @@ export default function SpotOrderClient({ waiter, spot, activeBill, menuItems, w
   const [editReason, setEditReason] = useState<string>("");
 
   useEffect(() => {
-    const eventSource = new EventSource(`/api/individual/spot-stream?spotId=${spot.id}&businessId=${spot.business_id}`);
+    const eventSource = new EventSource(`/api/individual/spot-stream?spotId=${spot.id}&businessId=${spot.business_id}`, { withCredentials: true });
     
     eventSource.onmessage = (event) => {
       // Data format is {"refresh":true}

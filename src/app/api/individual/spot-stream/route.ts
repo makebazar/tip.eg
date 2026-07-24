@@ -26,20 +26,17 @@ export async function GET(request: Request) {
         }
       };
 
-      // 1. Attach listeners
       eventBus.on(tableEvent, sendUpdate);
       eventBus.on(dashboardEvent, sendUpdate);
 
-      // 2. Keep connection alive with periodic pings
       const pingInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: ping\n\n`));
         } catch (e) {
           clearInterval(pingInterval);
         }
-      }, 15000); // 15 seconds
+      }, 10000);
 
-      // 3. Clean up when client disconnects
       request.signal.addEventListener("abort", () => {
         clearInterval(pingInterval);
         eventBus.off(tableEvent, sendUpdate);
@@ -53,9 +50,11 @@ export async function GET(request: Request) {
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform, no-store, must-revalidate",
       "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+      "Content-Encoding": "none",
     },
   });
 }

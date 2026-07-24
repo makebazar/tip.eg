@@ -277,7 +277,7 @@ export function AppStateProvider({
   useEffect(() => {
     if (!spotId) return;
 
-    const eventSource = new EventSource(`/api/t/stream?spotId=${spotId}`);
+    const eventSource = new EventSource(`/api/t/stream?spotId=${spotId}`, { withCredentials: true });
 
     eventSource.onmessage = (event) => {
       try {

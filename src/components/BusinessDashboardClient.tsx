@@ -98,7 +98,7 @@ export default function BusinessDashboardClient({ restaurant: initialRestaurant,
   const [menuItems, setMenuItems] = useState(initialMenuItems);
 
   useEffect(() => {
-    const eventSource = new EventSource('/api/business/dashboard/stream');
+    const eventSource = new EventSource('/api/business/dashboard/stream', { withCredentials: true });
 
     eventSource.onmessage = (event) => {
       try {
