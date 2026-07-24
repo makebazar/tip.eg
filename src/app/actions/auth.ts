@@ -6,33 +6,29 @@ import { redirect } from "next/navigation";
 import { SystemRole } from "@/lib/roles";
 
 export async function loginIndividual(formData: FormData) {
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const password = (formData.get("password") as string)?.trim();
 
   if (!email || !password) {
     return { error: "Please enter both email and password" };
   }
 
-  // Find user with STAFF role
   const user = await db.get<any>("SELECT * FROM users WHERE email = ? AND role_id = ?", [email, SystemRole.STAFF]);
 
   if (!user || user.password_hash !== password) {
     return { error: "Invalid email or password" };
   }
 
-  // Get their individual profile id
   const profile = await db.get<any>("SELECT id FROM individual_profiles WHERE user_id = ?", [user.id]);
 
   if (!profile) {
     return { error: "Individual profile not set up" };
   }
 
-  // Set cookie
   const cookieStore = await cookies();
   cookieStore.set("individual_id", profile.id, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 7, // 1 week
+    maxAge: 60 * 60 * 24 * 7,
     path: "/"
   });
 
@@ -46,36 +42,31 @@ export async function logoutIndividual() {
 }
 
 export async function loginBusiness(formData: FormData) {
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const password = (formData.get("password") as string)?.trim();
 
   if (!email || !password) {
     return { error: "Please enter both email and password" };
   }
 
-  // Find user with BUSINESS_MANAGER role
   const user = await db.get<any>("SELECT * FROM users WHERE email = ? AND role_id = ?", [email, SystemRole.BUSINESS_MANAGER]);
 
   if (!user || user.password_hash !== password) {
     return { error: "Invalid email or password" };
   }
 
-  // Set business_user_id cookie for manager session
   const cookieStore = await cookies();
   cookieStore.set("business_user_id", user.id, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 7,
     path: "/"
   });
 
-  // Find accessible businesses from user_businesses table or legacy user.business_id
   let userBizRows = await db.all<{ business_id: string }>(`
     SELECT business_id FROM user_businesses WHERE user_id = ?
   `, [user.id]);
 
   if (userBizRows.length === 0 && user.business_id) {
-    // Insert legacy link into user_businesses if missing
     await db.run(`
       INSERT INTO user_businesses (id, user_id, business_id, role)
       VALUES (?, ?, ?, 'OWNER') ON CONFLICT DO NOTHING
@@ -85,16 +76,13 @@ export async function loginBusiness(formData: FormData) {
   }
 
   if (userBizRows.length === 1) {
-    // Exactly 1 location -> set active business_id and go straight to dashboard
     cookieStore.set("business_id", userBizRows[0].business_id, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 7,
       path: "/"
     });
     redirect("/business/dashboard");
   } else {
-    // 0 or >1 locations -> go to locations hub
     redirect("/business/locations");
   }
 }
@@ -107,25 +95,22 @@ export async function logoutBusiness() {
 }
 
 export async function loginAdmin(formData: FormData) {
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+  const password = (formData.get("password") as string)?.trim();
 
   if (!email || !password) {
     return { error: "Please enter both email and password" };
   }
 
-  // Find user with SUPER_ADMIN role
   const user = await db.get<any>("SELECT * FROM users WHERE email = ? AND role_id = ?", [email, SystemRole.SUPER_ADMIN]);
 
   if (!user || user.password_hash !== password) {
     return { error: "Invalid email or password" };
   }
 
-  // Set cookie
   const cookieStore = await cookies();
   cookieStore.set("admin_session", "super-admin", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 7,
     path: "/"
   });

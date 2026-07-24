@@ -140,7 +140,6 @@ export async function acceptInvite(token: string, formData?: FormData) {
 
       cookieStore.set("business_user_id", userId, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
         maxAge: 60 * 60 * 24 * 30,
         path: "/",
       });
@@ -175,7 +174,6 @@ export async function acceptInvite(token: string, formData?: FormData) {
 
     cookieStore.set("business_id", inviteRow.business_id, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 30,
       path: "/",
     });
