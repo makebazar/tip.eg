@@ -376,6 +376,52 @@ async function initDb() {
       ON CONFLICT (id) DO NOTHING;
     `;
 
+    // Menu Categories
+    const categoriesData = [
+      ["cat-grills", rest1Id, "Grills & Kebab", "مشويات وكباب", 1],
+      ["cat-starters", rest1Id, "Starters & Mezza", "المقبلات والسلطات", 2],
+      ["cat-drinks", rest1Id, "Cold & Hot Drinks", "مشروبات باردة وساخنة", 3],
+      ["cat-desserts", rest1Id, "Desserts", "حلويات", 4],
+      ["cat-pyra-coffee", rest2Id, "Coffee & Teas", "قهوة وشاي", 1],
+      ["cat-pyra-breakfast", rest2Id, "Egyptian Breakfast", "إفطار مصري", 2],
+    ];
+    for (const [cId, bId, cName, cNameAr, sOrder] of categoriesData) {
+      await sql`
+        INSERT INTO menu_categories (id, business_id, name, name_ar, sort_order)
+        VALUES (${cId as string}, ${bId as string}, ${cName as string}, ${cNameAr as string}, ${sOrder as number})
+        ON CONFLICT (id) DO NOTHING;
+      `;
+    }
+
+    // Menu Items
+    const menuItemsData = [
+      ["item-kebab-mix", rest1Id, "cat-grills", "Mix Grill Platter (500g)", "مشويات مشكلة 500 جرام", "Juicy lamb kebab, kofta, and shish tawook served with rice and tahina", "كباب ضأن وكفتة وشيش طاووق مع أرز وطحينة", 450.0, "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-kofta", rest1Id, "cat-grills", "Egyptian Lamb Kofta", "كفتة ضأن مصرية", "Grilled minced lamb with authentic oriental spices", "كفتة ضأن مفرومة مشوية بالبهارات الشرقية الأصيلة", 280.0, "https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-shish", rest1Id, "cat-grills", "Shish Tawook Skewers", "شيش طاووق", "Marinated chicken breast skewers grilled over charcoal", "شيش طاووق دجاج متبل مشوي على الفحم", 240.0, "https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-tahina", rest1Id, "cat-starters", "Creamy Sesame Tahina", "طحينة سمسم ناعمة", "Traditional Egyptian tahina dip with garlic and lemon juice", "طحينة مصرية تقليدية مع ثوم وعصير ليمون", 40.0, "https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-baba", rest1Id, "cat-starters", "Smoked Baba Ghanoush", "بابا غنوج مشوي", "Smoked roasted eggplant dip with tahina and olive oil", "باذنجان مشوي ومهروس مع طحينة وزيت زيتون", 50.0, "https://images.unsplash.com/photo-1572449043416-55f4685c9bb7?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-mint-lemon", rest1Id, "cat-drinks", "Fresh Mint Lemonade", "ليمون بالنعناع طازج", "Cold pressed fresh lemon juice blended with fresh mint leaves", "عصير ليمون طازج مع نعناع منعش وثلج", 45.0, "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-hibiscus", rest1Id, "cat-drinks", "Iced Karkadeh (Hibiscus)", "كركديه مثلج", "Traditional Egyptian chilled hibiscus tea", "مشروب كركديه مصري منعش ومثلج", 35.0, "https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-om-ali", rest1Id, "cat-desserts", "Hot Om Ali Dessert", "أم علي بالفرن", "Baked puff pastry pudding with milk, nuts, and whipped cream", "حلوى أم علي الساخنة مع المكسرات والقشطة", 75.0, "https://images.unsplash.com/photo-1587314168485-3236d6710814?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-turkish-coffee", rest2Id, "cat-pyra-coffee", "Egyptian Double Turkish Coffee", "قهوة تركي مضاعفة", "Freshly ground Arabic coffee served with cardamoms", "قهوة عربية مطحونة طازجة بالهيل", 40.0, "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&auto=format&fit=crop&q=80", 1],
+      ["item-ful-taameya", rest2Id, "cat-pyra-breakfast", "Ful & Taameya Breakfast Basket", "سلة فول وطعمية", "Traditional Egyptian fava beans, crispy falafel, baladi bread & pickles", "فول مدمس وطعمية ساخنة مع خبز بلدي ومخلل", 90.0, "https://images.unsplash.com/photo-1590412200988-a436970781fa?w=400&auto=format&fit=crop&q=80", 1],
+    ];
+
+    for (const [iId, bId, cId, iName, iNameAr, desc, descAr, price, img, avail] of menuItemsData) {
+      await sql`
+        INSERT INTO menu_items (id, business_id, category_id, name, name_ar, description, description_ar, price, image_url, is_available)
+        VALUES (${iId as string}, ${bId as string}, ${cId as string}, ${iName as string}, ${iNameAr as string}, ${desc as string}, ${descAr as string}, ${price as number}, ${img as string}, ${avail as number})
+        ON CONFLICT (id) DO NOTHING;
+      `;
+    }
+
+    // Promotions
+    await sql`
+      INSERT INTO promotions (id, business_id, type, title, title_ar, description, description_ar, item_id, discount_price, status)
+      VALUES ('promo-kebab-mix', ${rest1Id}, 'SPECIAL_OFFER', 'Mix Grill Family Special', 'عرض المشويات العائلي', 'Get 20% discount on Mix Grill Platter', 'خصم 20% على طبق المشويات المشكلة العائلي', 'item-kebab-mix', 360.0, 'ACTIVE')
+      ON CONFLICT (id) DO NOTHING;
+    `;
+
     console.log("PostgreSQL schema & default seed initialized.");
     isInitialized = true;
   } catch (err) {
