@@ -1,6 +1,6 @@
 "use server";
 
-import db, { sql } from "@/lib/db";
+import db from "@/lib/db";
 import { eventBus } from "@/lib/events";
 import { revalidatePath } from "next/cache";
 import { SystemRole } from "@/lib/roles";

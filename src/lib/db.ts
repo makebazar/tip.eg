@@ -30,9 +30,10 @@ export const db = {
     return { changes: result.count };
   },
 
-  async transaction<T>(callback: (tx: postgres.Sql) => Promise<T>): Promise<T> {
+  async transaction<T>(callback: (tx: postgres.TransactionSql) => Promise<T>): Promise<T> {
     await initDb();
-    return await sql.begin(callback);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await sql.begin(callback as any) as T;
   }
 };
 
