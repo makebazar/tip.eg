@@ -12,6 +12,9 @@ RUN npm ci
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+
+# CACHEBUST forces Docker to re-copy source files on every deploy
+ARG CACHEBUST=1
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
