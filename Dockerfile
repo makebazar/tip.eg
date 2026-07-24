@@ -17,7 +17,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN npm run build --webpack
+RUN npm run build
 
 # Step 3. Production runner
 FROM base AS runner
