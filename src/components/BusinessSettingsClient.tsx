@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Building2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import styles from "@/app/business/dashboard/business.module.css";
+import { Button } from "@/components/ui/button";
 import PromotionsManagerClient from "@/app/business/promotions/PromotionsManagerClient";
 import {
   updateTipSettings,
@@ -548,19 +549,18 @@ export default function BusinessSettingsClient({ restaurant, waiters, spots, cat
   return (
     <div className={styles.container}>
       {/* Top Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <div>
-          <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--foreground)", margin: 0 }}>Settings</h2>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "4px 0 0" }}>{restaurant.name}</p>
-        </div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <Link href="/business/locations" className={styles.secondaryBtn} style={{ textDecoration: "none" }}>
-            <Building2 size={16} />
-            <span>Locations</span>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: "24px" }}>
+        <div className="flex items-center gap-3">
+          <Link href="/business/dashboard" title="Back">
+            <Button variant="ghost" size="icon-sm">
+              <ArrowLeft className="w-4 h-4" />
+              <span className="sr-only">Back</span>
+            </Button>
           </Link>
-          <Link href="/business/dashboard" className={styles.cancelBtn} style={{ textDecoration: "none" }}>
-            Back to Dashboard
-          </Link>
+          <div>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--foreground)", margin: 0 }}>Settings</h2>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "4px 0 0" }}>{restaurant.name}</p>
+          </div>
         </div>
       </div>
 

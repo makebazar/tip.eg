@@ -65,7 +65,7 @@
   --radius-md: 16px;
   --radius-sm: 10px;
   --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  --font-sans: 'Plus Jakarta Sans', var(--font-geist-sans), sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
   --font-serif: 'Playfair Display', Georgia, serif;
   --background: #FAF9F5;
   --foreground: oklch(0.145 0 0);

@@ -16,7 +16,7 @@ export default async function BusinessSettingsPage() {
   }
 
   // Fetch business details
-  const business = db.prepare("SELECT * FROM businesses WHERE id = ?").get(businessId) as any;
+  const business = await db.get("SELECT * FROM businesses WHERE id = ?", [businessId]);
 
   if (!business) {
     cookieStore.delete("business_id");
@@ -24,7 +24,7 @@ export default async function BusinessSettingsPage() {
   }
 
   // Fetch staff members
-  const waiters = db.prepare(`
+  const waiters = await db.all(`
     SELECT
       ip.id, ip.avatar_url, ip.balance, ip.rating, ip.short_code,
       bm.role,
@@ -33,31 +33,31 @@ export default async function BusinessSettingsPage() {
     JOIN individual_profiles ip ON ip.id = bm.individual_id
     JOIN users u ON u.id = ip.user_id
     WHERE bm.business_id = ? AND bm.status = 'ACTIVE'
-  `).all(businessId) as any[];
+  `, [businessId]);
 
   // Fetch physical spots
-  const spots = db.prepare(`
+  const spots = await db.all(`
     SELECT s.* FROM spots s WHERE s.business_id = ? ORDER BY s.number ASC
-  `).all(businessId) as any[];
+  `, [businessId]);
 
   // Fetch menu categories
-  const categories = db.prepare(`
+  const categories = await db.all(`
     SELECT * FROM menu_categories WHERE business_id = ? ORDER BY sort_order ASC, name ASC
-  `).all(businessId) as any[];
+  `, [businessId]);
 
   // Fetch menu items
-  const menuItems = db.prepare(`
+  const menuItems = await db.all(`
     SELECT mi.*, mc.name as category_name
     FROM menu_items mi
     LEFT JOIN menu_categories mc ON mc.id = mi.category_id
     WHERE mi.business_id = ?
     ORDER BY mi.created_at DESC
-  `).all(businessId) as any[];
+  `, [businessId]);
 
   // Fetch manager user details
-  const managerUser = db.prepare(`
+  const managerUser = await db.get<{ id: string; name: string; email: string; role_id: number }>(`
     SELECT id, name, email, role_id FROM users WHERE business_id = ? AND role_id = ? LIMIT 1
-  `).get(businessId, SystemRole.BUSINESS_MANAGER) as { id: string; name: string; email: string; role_id: number } | undefined;
+  `, [businessId, SystemRole.BUSINESS_MANAGER]);
 
   const resPromotions = await getAdminPromotions(businessId);
   const promotions = resPromotions.promotions || [];
@@ -75,5 +75,4 @@ export default async function BusinessSettingsPage() {
       />
     </main>
   );
-
 }

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, X, Settings, Copy, Check, RefreshCw } from "lucide-react";
+import { Plus, Search, X, Settings, Copy, Check, RefreshCw, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,9 +46,7 @@ export function LocationsClient({ locations: initialLocations, activeBusinessId,
   const [error, setError] = useState<string | null>(null);
   const [selectingId, setSelectingId] = useState<string | null>(null);
 
-  const totalLocations = locations.length;
-  const totalSpots = locations.reduce((sum, l) => sum + l.spots_count, 0);
-  const totalStaff = locations.reduce((sum, l) => sum + l.staff_count, 0);
+
 
   const filteredLocations = locations.filter((loc) =>
     loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -182,55 +180,33 @@ export function LocationsClient({ locations: initialLocations, activeBusinessId,
   return (
     <div className="min-h-screen bg-[#FAF9F5] text-slate-900 font-sans pb-16">
       {/* Top Navbar */}
-      <header className="w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 py-3.5 flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-extrabold tracking-tight text-slate-900">
-            TIp Business
-          </h1>
-          <p className="text-xs text-slate-500">Account: {user.name} ({user.email})</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link href="/business/account">
-            <Button variant="secondary" size="sm">
-              Account Settings
-            </Button>
+      <header className="w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 py-3.5">
+        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+          <Link href="/business/locations" className="flex items-center gap-2 group select-none">
+            <span className="text-2xl font-black tracking-tight text-slate-900">
+              tip<span className="text-[#B58A1C]">.eg</span>
+            </span>
           </Link>
-          <form action={logoutBusiness}>
-            <Button variant="destructive" size="sm" type="submit">
-              Logout
-            </Button>
-          </form>
+
+          <div className="flex items-center gap-2">
+            <Link href="/business/account" title="Account Settings">
+              <Button variant="secondary" size="icon-sm">
+                <Settings className="w-4 h-4 text-slate-600" />
+                <span className="sr-only">Account Settings</span>
+              </Button>
+            </Link>
+            <form action={logoutBusiness}>
+              <Button variant="destructive" size="icon-sm" type="submit" title="Logout">
+                <LogOut className="w-4 h-4" />
+                <span className="sr-only">Logout</span>
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
 
       <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-8">
-        {/* Header Summary Cards */}
-        <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card className="sm:col-span-2 md:col-span-2 p-6 flex flex-col justify-center">
-            <h2 className="text-xl font-extrabold text-slate-900 mb-1">Locations & Branches</h2>
-            <p className="text-xs text-slate-600">
-              Manage your business venues, create new locations, or select a location to open its dashboard.
-            </p>
-          </Card>
 
-          <Card className="p-5 flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Locations</span>
-            <div className="text-3xl font-extrabold text-slate-900 my-1">{totalLocations}</div>
-            <span className="text-xs text-slate-500">Active branches</span>
-          </Card>
-
-          <Card className="p-5 flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Spots & Staff</span>
-            <div className="flex items-baseline gap-2 my-1">
-              <span className="text-3xl font-extrabold text-slate-900">{totalSpots}</span>
-              <span className="text-xs text-slate-500">spots /</span>
-              <span className="text-2xl font-bold text-teal-600">{totalStaff}</span>
-              <span className="text-xs text-slate-500">staff</span>
-            </div>
-            <span className="text-xs text-slate-500">Total across all branches</span>
-          </Card>
-        </div>
 
         {/* Toolbar & Search */}
         <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">

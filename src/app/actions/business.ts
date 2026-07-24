@@ -1,6 +1,6 @@
 "use server";
 
-import db from "@/lib/db";
+import db, { sql } from "@/lib/db";
 import { eventBus } from "@/lib/events";
 import { revalidatePath } from "next/cache";
 import { SystemRole } from "@/lib/roles";
@@ -34,9 +34,6 @@ export async function uploadMenuImage(base64Data: string) {
   }
 }
 
-
-
-
 export async function addIndividualToBusiness(data: {
   businessId: string;
   name: string;
@@ -53,31 +50,31 @@ export async function addIndividualToBusiness(data: {
     const memberId = `bm-${businessId}-${profileId}`;
     const shortCode = Math.random().toString(36).substring(2, 7);
 
-    // Generate a readable temporary password: Tip# + 4 random alphanum chars
     const chars = "abcdefghjkmnpqrstuvwxyz23456789";
     const tempPassword = "Tip#" + Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 
-    const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+    const existing = await db.get("SELECT id FROM users WHERE email = ?", [email]);
     if (existing) {
       return { success: false, error: "Email is already in use" };
     }
 
-    db.transaction(() => {
-      db.prepare(`
+    await db.transaction(async (tx) => {
+      await tx`
         INSERT INTO users (id, name, email, password_hash, role_id, business_id)
-        VALUES (?, ?, ?, ?, ?, NULL)
-      `).run(userId, name, email, tempPassword, SystemRole.STAFF);
+        VALUES (${userId}, ${name}, ${email}, ${tempPassword}, ${SystemRole.STAFF}, NULL)
+      `;
 
-      db.prepare(`
+      await tx`
         INSERT INTO individual_profiles (id, user_id, business_id, role, avatar_url, qr_code_url, payout_method, payout_detail, balance, rating, short_code)
-        VALUES (?, ?, ?, ?, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', ?, ?, ?, 0.0, 5.0, ?)
-      `).run(profileId, userId, businessId, role, `/qrs/${profileId}.png`, payoutMethod, payoutDetail, shortCode);
+        VALUES (${profileId}, ${userId}, ${businessId}, ${role}, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', ${`/qrs/${profileId}.png`}, ${payoutMethod}, ${payoutDetail}, 0.0, 5.0, ${shortCode})
+      `;
 
-      db.prepare(`
-        INSERT OR IGNORE INTO business_members (id, business_id, individual_id, role, status)
-        VALUES (?, ?, ?, ?, 'ACTIVE')
-      `).run(memberId, businessId, profileId, role);
-    })();
+      await tx`
+        INSERT INTO business_members (id, business_id, individual_id, role, status)
+        VALUES (${memberId}, ${businessId}, ${profileId}, ${role}, 'ACTIVE')
+        ON CONFLICT DO NOTHING
+      `;
+    });
 
     return { success: true, credentials: { email, password: tempPassword, name } };
   } catch (error: any) {
@@ -88,13 +85,13 @@ export async function addIndividualToBusiness(data: {
 
 export async function findIndividualByEmail(email: string) {
   try {
-    const row = db.prepare(`
+    const row = await db.get(`
       SELECT ip.id, ip.role, ip.avatar_url, ip.business_id,
              u.name, u.email
       FROM individual_profiles ip
       JOIN users u ON u.id = ip.user_id
       WHERE u.email = ?
-    `).get(email) as any;
+    `, [email]);
 
     if (!row) return { success: false, error: "No account found with this email" };
     return { success: true, individual: row };
@@ -110,18 +107,19 @@ export async function linkIndividualToBusiness(data: {
 }) {
   const { businessId, individualId, role } = data;
   try {
-    const existing = db.prepare(
-      "SELECT id FROM business_members WHERE business_id = ? AND individual_id = ?"
-    ).get(businessId, individualId);
+    const existing = await db.get(
+      "SELECT id FROM business_members WHERE business_id = ? AND individual_id = ?",
+      [businessId, individualId]
+    );
 
     if (existing) {
       return { success: false, error: "This person is already part of your team" };
     }
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO business_members (id, business_id, individual_id, role, status)
       VALUES (?, ?, ?, ?, 'ACTIVE')
-    `).run(`bm-${businessId}-${individualId}`, businessId, individualId, role);
+    `, [`bm-${businessId}-${individualId}`, businessId, individualId, role]);
 
     revalidatePath("/business/dashboard");
     return { success: true };
@@ -137,9 +135,10 @@ export async function unlinkIndividualFromBusiness(data: {
 }) {
   const { businessId, individualId } = data;
   try {
-    db.prepare(
-      "DELETE FROM business_members WHERE business_id = ? AND individual_id = ?"
-    ).run(businessId, individualId);
+    await db.run(
+      "DELETE FROM business_members WHERE business_id = ? AND individual_id = ?",
+      [businessId, individualId]
+    );
     revalidatePath("/business/dashboard");
     return { success: true };
   } catch (error: any) {
@@ -154,9 +153,10 @@ export async function updateMemberRole(data: {
 }) {
   const { businessId, individualId, role } = data;
   try {
-    db.prepare(
-      "UPDATE business_members SET role = ? WHERE business_id = ? AND individual_id = ?"
-    ).run(role, businessId, individualId);
+    await db.run(
+      "UPDATE business_members SET role = ? WHERE business_id = ? AND individual_id = ?",
+      [role, businessId, individualId]
+    );
     revalidatePath("/business/dashboard");
     return { success: true };
   } catch (error: any) {
@@ -172,11 +172,11 @@ export async function updateTipSettings(data: {
   const { businessId, mode, individualPercentage } = data;
 
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE businesses
       SET tip_distribution_mode = ?, individual_percentage = ?
       WHERE id = ?
-    `).run(mode, individualPercentage, businessId);
+    `, [mode, individualPercentage, businessId]);
 
     revalidatePath("/business/dashboard");
     return { success: true };
@@ -193,11 +193,11 @@ export async function updateBusinessDetails(data: {
   address?: string;
 }) {
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE businesses
       SET name = ?, city = ?, address = ?
       WHERE id = ?
-    `).run(data.name, data.city || null, data.address || null, data.businessId);
+    `, [data.name, data.city || null, data.address || null, data.businessId]);
 
     revalidatePath("/business/dashboard");
     revalidatePath("/business/settings");
@@ -208,7 +208,6 @@ export async function updateBusinessDetails(data: {
   }
 }
 
-
 export async function updateBusinessType(data: {
   businessId: string;
   type: string;
@@ -216,11 +215,11 @@ export async function updateBusinessType(data: {
   const { businessId, type } = data;
 
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE businesses
       SET business_type = ?
       WHERE id = ?
-    `).run(type, businessId);
+    `, [type, businessId]);
 
     revalidatePath("/business/dashboard");
     return { success: true };
@@ -236,11 +235,11 @@ export async function updateExchangeRates(data: {
   eurRate: number;
 }) {
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE businesses
       SET usd_rate = ?, eur_rate = ?
       WHERE id = ?
-    `).run(data.usdRate, data.eurRate, data.businessId);
+    `, [data.usdRate, data.eurRate, data.businessId]);
 
     revalidatePath("/business/dashboard");
     revalidatePath("/business/settings");
@@ -251,11 +250,10 @@ export async function updateExchangeRates(data: {
   }
 }
 
-
 export async function createMockBill(data: {
   businessId: string;
   individualId: string;
-  spotLabel: string; // e.g. "Table 4", "Room 101", "Chair 2"
+  spotLabel: string;
   amount: number;
   items: { name: string; price: number; quantity: number }[];
 }) {
@@ -263,15 +261,12 @@ export async function createMockBill(data: {
 
   try {
     const billId = `bill-${Date.now()}`;
-
-    // Extract table/room number as an integer if possible
     const cleanNum = parseInt(spotLabel.replace(/[^0-9]/g, ""), 10) || 1;
 
-    // Find or create physical spot
-    let spot = db.prepare(`
+    let spot = await db.get<{ id: string; short_code: string }>(`
       SELECT id, short_code FROM spots 
       WHERE business_id = ? AND number = ?
-    `).get(businessId, cleanNum) as { id: string; short_code: string } | undefined;
+    `, [businessId, cleanNum]);
 
     let spotId = spot?.id;
     let spotCode = spot?.short_code;
@@ -280,16 +275,16 @@ export async function createMockBill(data: {
       spotId = `spot-${businessId}-${cleanNum}`;
       spotCode = Math.random().toString(36).substring(2, 7);
       
-      db.prepare(`
+      await db.run(`
         INSERT INTO spots (id, business_id, number, label, short_code)
         VALUES (?, ?, ?, ?, ?)
-      `).run(spotId, businessId, cleanNum, spotLabel, spotCode);
+      `, [spotId, businessId, cleanNum, spotLabel, spotCode]);
     }
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO bills (id, table_number, spot_id, business_id, individual_id, amount, status, items)
       VALUES (?, ?, ?, ?, ?, ?, 'UNPAID', ?)
-    `).run(billId, spotLabel, spotId, businessId, individualId, amount, JSON.stringify(items));
+    `, [billId, spotLabel, spotId, businessId, individualId, amount, JSON.stringify(items)]);
 
     eventBus.emit(`dashboard-update:${businessId}`);
     revalidatePath("/business/dashboard");
@@ -310,7 +305,7 @@ export async function withdrawBusinessBalance(data: {
 
   try {
     const payoutId = `po-${Date.now()}`;
-    const business = db.prepare("SELECT balance FROM businesses WHERE id = ?").get(businessId) as any;
+    const business = await db.get<any>("SELECT balance FROM businesses WHERE id = ?", [businessId]);
 
     if (!business) {
       return { success: false, error: "Business not found" };
@@ -320,13 +315,18 @@ export async function withdrawBusinessBalance(data: {
       return { success: false, error: "Insufficient balance" };
     }
 
-    db.transaction(() => {
-      db.prepare("UPDATE businesses SET balance = balance - ? WHERE id = ?").run(amount, businessId);
-      db.prepare(`
-        INSERT INTO payout_requests (id, business_id, amount, payout_method, destination_detail, status)
-        VALUES (?, ?, ?, ?, ?, 'SUCCESS')
-      `).run(payoutId, businessId, amount, payoutMethod, destinationDetail);
-    })();
+    const settingRow = await db.get<any>("SELECT value FROM platform_settings WHERE key = 'business_payout_fee_percent'");
+    const feePercent = parseFloat(settingRow?.value || "2.5");
+    const feeAmount = (amount * feePercent) / 100;
+    const netAmount = amount - feeAmount;
+
+    await db.transaction(async (tx) => {
+      await tx`UPDATE businesses SET balance = balance - ${amount} WHERE id = ${businessId}`;
+      await tx`
+        INSERT INTO payout_requests (id, business_id, amount, fee_amount, net_amount, payout_method, destination_detail, status)
+        VALUES (${payoutId}, ${businessId}, ${amount}, ${feeAmount}, ${netAmount}, ${payoutMethod}, ${destinationDetail}, 'PENDING')
+      `;
+    });
 
     revalidatePath("/business/dashboard");
     return { success: true };
@@ -342,13 +342,13 @@ export async function assignIndividualToSpot(data: {
 }) {
   const { spotId, individualId } = data;
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE spots
       SET assigned_individual_id = ?
       WHERE id = ?
-    `).run(individualId ? individualId : null, spotId);
+    `, [individualId ? individualId : null, spotId]);
 
-    const s = db.prepare("SELECT business_id FROM spots WHERE id = ?").get(spotId) as any;
+    const s = await db.get<any>("SELECT business_id FROM spots WHERE id = ?", [spotId]);
     if (s) eventBus.emit(`dashboard-update:${s.business_id}`);
 
     revalidatePath("/business/dashboard");
@@ -368,16 +368,16 @@ export async function createSpot(data: {
   try {
     let number = data.number;
     if (!number) {
-      const maxRow = db.prepare("SELECT MAX(number) as maxNum FROM spots WHERE business_id = ?").get(businessId) as any;
+      const maxRow = await db.get<any>("SELECT MAX(number) as maxNum FROM spots WHERE business_id = ?", [businessId]);
       number = (maxRow?.maxNum || 0) + 1;
     }
     const id = `spot-${Date.now()}`;
     const shortCode = Math.random().toString(36).substring(2, 7);
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO spots (id, business_id, number, label, short_code)
       VALUES (?, ?, ?, ?, ?)
-    `).run(id, businessId, number, label, shortCode);
+    `, [id, businessId, number, label, shortCode]);
 
     eventBus.emit(`dashboard-update:${businessId}`);
     revalidatePath("/business/dashboard");
@@ -387,7 +387,6 @@ export async function createSpot(data: {
     return { success: false, error: error?.message || "Failed to create spot" };
   }
 }
-
 
 export async function updateBill(data: {
   billId: string;
@@ -399,16 +398,16 @@ export async function updateBill(data: {
     const amount = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
     if (individualId !== undefined) {
-      db.prepare(`
+      await db.run(`
         UPDATE bills SET items = ?, amount = ?, individual_id = ? WHERE id = ?
-      `).run(JSON.stringify(items), amount, individualId, billId);
+      `, [JSON.stringify(items), amount, individualId, billId]);
     } else {
-      db.prepare(`
+      await db.run(`
         UPDATE bills SET items = ?, amount = ? WHERE id = ?
-      `).run(JSON.stringify(items), amount, billId);
+      `, [JSON.stringify(items), amount, billId]);
     }
 
-    const b = db.prepare("SELECT business_id, spot_id FROM bills WHERE id = ?").get(billId) as any;
+    const b = await db.get<any>("SELECT business_id, spot_id FROM bills WHERE id = ?", [billId]);
     if (b) {
       eventBus.emit(`dashboard-update:${b.business_id}`);
       eventBus.emit(`table-update:${b.spot_id}`);
@@ -424,8 +423,8 @@ export async function updateBill(data: {
 
 export async function cancelBill(data: { billId: string }) {
   try {
-    db.prepare(`UPDATE bills SET status = 'CANCELLED' WHERE id = ?`).run(data.billId);
-    const b = db.prepare("SELECT business_id, spot_id FROM bills WHERE id = ?").get(data.billId) as any;
+    await db.run(`UPDATE bills SET status = 'CANCELLED' WHERE id = ?`, [data.billId]);
+    const b = await db.get<any>("SELECT business_id, spot_id FROM bills WHERE id = ?", [data.billId]);
     if (b) {
       eventBus.emit(`dashboard-update:${b.business_id}`);
       eventBus.emit(`table-update:${b.spot_id}`);
@@ -441,15 +440,15 @@ export async function addItemToSpotCart(data: {
   businessId: string;
   spotId: string;
   spotLabel: string;
-  item?: { id?: string; name: string; price: number; quantity: number; deviceId?: string; isDraft?: boolean };
-  items?: { id?: string; name: string; price: number; quantity: number; deviceId?: string; isDraft?: boolean }[];
+  item?: { id?: string; name: string; price: number; quantity: number; deviceId?: string; isDraft?: boolean; originalPrice?: number };
+  items?: { id?: string; name: string; price: number; quantity: number; deviceId?: string; isDraft?: boolean; originalPrice?: number }[];
 }) {
   const { businessId, spotId, spotLabel, item, items: incomingItems } = data;
   try {
     const toAdd = incomingItems ? incomingItems : (item ? [item] : []);
     if (toAdd.length === 0) return { success: true };
 
-    let openBill = db.prepare("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1").get(spotId) as any;
+    let openBill = await db.get<any>("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1", [spotId]);
 
     if (openBill) {
       const items = JSON.parse(openBill.items || "[]");
@@ -472,15 +471,15 @@ export async function addItemToSpotCart(data: {
       }
 
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, openBill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, openBill.id]);
     } else {
       const billId = `bill-${Date.now()}`;
       const items = [...toAdd];
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare(`
+      await db.run(`
         INSERT INTO bills (id, table_number, spot_id, business_id, amount, status, items)
         VALUES (?, ?, ?, ?, ?, 'UNPAID', ?)
-      `).run(billId, spotLabel, spotId, businessId, newAmount, JSON.stringify(items));
+      `, [billId, spotLabel, spotId, businessId, newAmount, JSON.stringify(items)]);
     }
 
     eventBus.emit(`dashboard-update:${businessId}`);
@@ -498,14 +497,14 @@ export async function removeItemFromSpotCart(data: {
   itemIndex: number;
 }) {
   try {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(data.billId) as any;
+    const bill = await db.get<any>("SELECT * FROM bills WHERE id = ?", [data.billId]);
     if (!bill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(bill.items || "[]");
     if (data.itemIndex >= 0 && data.itemIndex < items.length) {
       items.splice(data.itemIndex, 1);
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, bill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, bill.id]);
       eventBus.emit(`dashboard-update:${bill.business_id}`);
       eventBus.emit(`table-update:${bill.spot_id}`);
       revalidatePath("/business/dashboard");
@@ -523,7 +522,7 @@ export async function updateWaiterCartQuantity(data: {
   delta: number;
 }) {
   try {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(data.billId) as any;
+    const bill = await db.get<any>("SELECT * FROM bills WHERE id = ?", [data.billId]);
     if (!bill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(bill.items || "[]");
@@ -534,7 +533,7 @@ export async function updateWaiterCartQuantity(data: {
       }
       
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, bill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, bill.id]);
       eventBus.emit(`dashboard-update:${bill.business_id}`);
       eventBus.emit(`table-update:${bill.spot_id}`);
       return { success: true };
@@ -551,7 +550,7 @@ export async function updateWaiterCartItemPrice(data: {
   newPrice: number;
 }) {
   try {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(data.billId) as any;
+    const bill = await db.get<any>("SELECT * FROM bills WHERE id = ?", [data.billId]);
     if (!bill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(bill.items || "[]");
@@ -563,7 +562,7 @@ export async function updateWaiterCartItemPrice(data: {
         items[data.itemIndex].price = data.newPrice;
         
         const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-        db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, bill.id);
+        await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, bill.id]);
         eventBus.emit(`dashboard-update:${bill.business_id}`);
         eventBus.emit(`table-update:${bill.spot_id}`);
         return { success: true };
@@ -581,7 +580,7 @@ export async function addBillDiscount(data: {
   reason: string;
 }) {
   try {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(data.billId) as any;
+    const bill = await db.get<any>("SELECT * FROM bills WHERE id = ?", [data.billId]);
     if (!bill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(bill.items || "[]");
@@ -595,7 +594,7 @@ export async function addBillDiscount(data: {
     items.push(discountItem);
 
     const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-    db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, bill.id);
+    await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, bill.id]);
     eventBus.emit(`dashboard-update:${bill.business_id}`);
     eventBus.emit(`table-update:${bill.spot_id}`);
     return { success: true };
@@ -610,7 +609,7 @@ export async function updateWaiterCartItemNote(data: {
   note: string;
 }) {
   try {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(data.billId) as any;
+    const bill = await db.get<any>("SELECT * FROM bills WHERE id = ?", [data.billId]);
     if (!bill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(bill.items || "[]");
@@ -621,7 +620,7 @@ export async function updateWaiterCartItemNote(data: {
         items[data.itemIndex].note = data.note.trim();
       }
       
-      db.prepare("UPDATE bills SET items = ? WHERE id = ?").run(JSON.stringify(items), bill.id);
+      await db.run("UPDATE bills SET items = ? WHERE id = ?", [JSON.stringify(items), bill.id]);
       eventBus.emit(`dashboard-update:${bill.business_id}`);
       eventBus.emit(`table-update:${bill.spot_id}`);
       return { success: true };
@@ -634,8 +633,8 @@ export async function updateWaiterCartItemNote(data: {
 
 export async function deleteSpot(data: { spotId: string }) {
   try {
-    const s = db.prepare("SELECT business_id FROM spots WHERE id = ?").get(data.spotId) as any;
-    db.prepare(`DELETE FROM spots WHERE id = ?`).run(data.spotId);
+    const s = await db.get<any>("SELECT business_id FROM spots WHERE id = ?", [data.spotId]);
+    await db.run(`DELETE FROM spots WHERE id = ?`, [data.spotId]);
     if (s) eventBus.emit(`dashboard-update:${s.business_id}`);
     revalidatePath("/business/dashboard");
     revalidatePath("/business/settings");
@@ -649,10 +648,10 @@ export async function deleteSpot(data: { spotId: string }) {
 export async function createCategory(data: { businessId: string; name: string; nameAr?: string }) {
   try {
     const id = `cat-${Date.now()}`;
-    db.prepare(`
+    await db.run(`
       INSERT INTO menu_categories (id, business_id, name, name_ar)
       VALUES (?, ?, ?, ?)
-    `).run(id, data.businessId, data.name, data.nameAr || null);
+    `, [id, data.businessId, data.name, data.nameAr || null]);
     revalidatePath("/business/settings");
     return { success: true };
   } catch (error: any) {
@@ -662,7 +661,7 @@ export async function createCategory(data: { businessId: string; name: string; n
 
 export async function deleteCategory(data: { categoryId: string }) {
   try {
-    db.prepare(`DELETE FROM menu_categories WHERE id = ?`).run(data.categoryId);
+    await db.run(`DELETE FROM menu_categories WHERE id = ?`, [data.categoryId]);
     revalidatePath("/business/settings");
     return { success: true };
   } catch (error: any) {
@@ -690,13 +689,13 @@ export async function createMenuItem(data: {
     const translationsJson = JSON.stringify(translations);
     const dietaryTagsJson = data.dietaryTags && data.dietaryTags.length > 0 ? JSON.stringify(data.dietaryTags) : null;
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO menu_items (
         id, business_id, category_id, name, price, price_tourist, description, image_url,
         weight_volume, ingredients, spiciness, dietary_tags, calories, is_available, translations_json
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-    `).run(
+    `, [
       id,
       data.businessId,
       data.categoryId || null,
@@ -711,7 +710,7 @@ export async function createMenuItem(data: {
       dietaryTagsJson,
       data.calories || null,
       translationsJson
-    );
+    ]);
     eventBus.emit(`dashboard-update:${data.businessId}`);
     revalidatePath("/business/settings");
     return { success: true, translations, id };
@@ -747,10 +746,6 @@ export async function calculateItemCalories(data: { name: string; ingredients: s
   }
 }
 
-
-
-
-
 export async function updateMenuItem(data: {
   itemId: string;
   name: string;
@@ -769,12 +764,12 @@ export async function updateMenuItem(data: {
     const translations = await translateMenuItemWithAI(data.name, data.description);
     const translationsJson = JSON.stringify(translations);
 
-    db.prepare(`
+    await db.run(`
       UPDATE menu_items
       SET name = ?, price = ?, category_id = ?, description = ?, image_url = ?,
           weight_volume = ?, ingredients = ?, spiciness = ?, dietary_tags = ?, calories = ?, translations_json = ?
       WHERE id = ?
-    `).run(
+    `, [
       data.name,
       data.price,
       data.categoryId || null,
@@ -787,8 +782,8 @@ export async function updateMenuItem(data: {
       data.calories || null,
       translationsJson,
       data.itemId
-    );
-    const mi = db.prepare("SELECT business_id FROM menu_items WHERE id = ?").get(data.itemId) as any;
+    ]);
+    const mi = await db.get<any>("SELECT business_id FROM menu_items WHERE id = ?", [data.itemId]);
     if (mi) eventBus.emit(`dashboard-update:${mi.business_id}`);
     revalidatePath("/business/settings");
     return { success: true };
@@ -803,7 +798,7 @@ export async function updateAccountPassword(data: {
   newPassword: string;
 }) {
   try {
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(data.userId) as any;
+    const user = await db.get<any>("SELECT * FROM users WHERE id = ?", [data.userId]);
     if (!user) {
       return { success: false, error: "User not found" };
     }
@@ -812,7 +807,7 @@ export async function updateAccountPassword(data: {
       return { success: false, error: "Incorrect current password" };
     }
 
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(data.newPassword, data.userId);
+    await db.run("UPDATE users SET password_hash = ? WHERE id = ?", [data.newPassword, data.userId]);
     revalidatePath("/business/settings");
     return { success: true };
   } catch (error: any) {
@@ -821,13 +816,12 @@ export async function updateAccountPassword(data: {
   }
 }
 
-
 export async function toggleStopList(data: { itemId: string; isAvailable: number }) {
   try {
-    const mi = db.prepare("SELECT business_id FROM menu_items WHERE id = ?").get(data.itemId) as any;
-    db.prepare(`
+    const mi = await db.get<any>("SELECT business_id FROM menu_items WHERE id = ?", [data.itemId]);
+    await db.run(`
       UPDATE menu_items SET is_available = ? WHERE id = ?
-    `).run(data.isAvailable, data.itemId);
+    `, [data.isAvailable, data.itemId]);
     if (mi) eventBus.emit(`dashboard-update:${mi.business_id}`);
     revalidatePath("/business/settings");
     return { success: true };
@@ -838,8 +832,8 @@ export async function toggleStopList(data: { itemId: string; isAvailable: number
 
 export async function deleteMenuItem(data: { itemId: string }) {
   try {
-    const mi = db.prepare("SELECT business_id FROM menu_items WHERE id = ?").get(data.itemId) as any;
-    db.prepare(`DELETE FROM menu_items WHERE id = ?`).run(data.itemId);
+    const mi = await db.get<any>("SELECT business_id FROM menu_items WHERE id = ?", [data.itemId]);
+    await db.run(`DELETE FROM menu_items WHERE id = ?`, [data.itemId]);
     if (mi) eventBus.emit(`dashboard-update:${mi.business_id}`);
     revalidatePath("/business/settings");
     return { success: true };
@@ -857,7 +851,7 @@ export async function updateDraftQuantity(data: {
   originalPrice?: number;
 }) {
   try {
-    let openBill = db.prepare("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1").get(data.spotId) as any;
+    let openBill = await db.get<any>("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1", [data.spotId]);
     if (!openBill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(openBill.items || "[]");
@@ -875,7 +869,7 @@ export async function updateDraftQuantity(data: {
         items.splice(itemIndex, 1);
       }
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, openBill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, openBill.id]);
       eventBus.emit(`dashboard-update:${openBill.business_id}`);
       eventBus.emit(`table-update:${openBill.spot_id}`);
       return { success: true };
@@ -892,7 +886,7 @@ export async function removeDraftItem(data: {
   deviceId: string;
 }) {
   try {
-    let openBill = db.prepare("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1").get(data.spotId) as any;
+    let openBill = await db.get<any>("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1", [data.spotId]);
     if (!openBill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(openBill.items || "[]");
@@ -900,7 +894,7 @@ export async function removeDraftItem(data: {
     
     if (items.length !== filteredItems.length) {
       const newAmount = filteredItems.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(filteredItems), newAmount, openBill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(filteredItems), newAmount, openBill.id]);
       eventBus.emit(`dashboard-update:${openBill.business_id}`);
       eventBus.emit(`table-update:${openBill.spot_id}`);
     }
@@ -915,7 +909,7 @@ export async function confirmGuestDrafts(data: {
   deviceId: string;
 }) {
   try {
-    let openBill = db.prepare("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1").get(data.spotId) as any;
+    let openBill = await db.get<any>("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1", [data.spotId]);
     if (!openBill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(openBill.items || "[]");
@@ -929,7 +923,7 @@ export async function confirmGuestDrafts(data: {
     
     if (changed) {
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, openBill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, openBill.id]);
       eventBus.emit(`dashboard-update:${openBill.business_id}`);
       eventBus.emit(`table-update:${openBill.spot_id}`);
     }
@@ -943,7 +937,7 @@ export async function approvePendingItems(data: {
   spotId: string;
 }) {
   try {
-    let openBill = db.prepare("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1").get(data.spotId) as any;
+    let openBill = await db.get<any>("SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID' LIMIT 1", [data.spotId]);
     if (!openBill) return { success: false, error: "Bill not found" };
 
     const items = JSON.parse(openBill.items || "[]");
@@ -958,7 +952,7 @@ export async function approvePendingItems(data: {
     
     if (changed) {
       const newAmount = items.reduce((s: number, i: any) => s + ((i.isDraft || i.status === 'PENDING') ? 0 : i.price * i.quantity), 0);
-      db.prepare("UPDATE bills SET items = ?, amount = ? WHERE id = ?").run(JSON.stringify(items), newAmount, openBill.id);
+      await db.run("UPDATE bills SET items = ?, amount = ? WHERE id = ?", [JSON.stringify(items), newAmount, openBill.id]);
       eventBus.emit(`dashboard-update:${openBill.business_id}`);
       eventBus.emit(`table-update:${openBill.spot_id}`);
     }
@@ -979,31 +973,28 @@ export async function transferBill(data: {
   try {
     const { billId, oldSpotId, targetSpotId, targetSpotLabel, keepOwnership, currentWaiterId } = data;
 
-    // Verify target spot doesn't have an active bill
-    const targetHasBill = db.prepare("SELECT count(*) as count FROM bills WHERE spot_id = ? AND status = 'UNPAID'").get(targetSpotId) as any;
-    if (targetHasBill && targetHasBill.count > 0) {
+    const targetHasBill = await db.get<any>("SELECT count(*) as count FROM bills WHERE spot_id = ? AND status = 'UNPAID'", [targetSpotId]);
+    if (targetHasBill && parseInt(targetHasBill.count, 10) > 0) {
       return { success: false, error: "Target table already has an active bill" };
     }
 
-    // Verify the bill is still unpaid
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(billId) as any;
+    const bill = await db.get<any>("SELECT * FROM bills WHERE id = ?", [billId]);
     if (!bill || bill.status !== 'UNPAID') {
       return { success: false, error: "Bill is no longer active" };
     }
 
-    // Update the bill
     if (keepOwnership) {
-      db.prepare(`
+      await db.run(`
         UPDATE bills 
         SET spot_id = ?, table_number = ?, individual_id = ?
         WHERE id = ?
-      `).run(targetSpotId, targetSpotLabel, currentWaiterId, billId);
+      `, [targetSpotId, targetSpotLabel, currentWaiterId, billId]);
     } else {
-      db.prepare(`
+      await db.run(`
         UPDATE bills 
         SET spot_id = ?, table_number = ?, individual_id = NULL
         WHERE id = ?
-      `).run(targetSpotId, targetSpotLabel, billId);
+      `, [targetSpotId, targetSpotLabel, billId]);
     }
 
     eventBus.emit(`dashboard-update:${bill.business_id}`);
@@ -1018,7 +1009,7 @@ export async function transferBill(data: {
 
 export async function recordQrScan(businessId: string) {
   try {
-    db.prepare("UPDATE businesses SET qr_scans_count = COALESCE(qr_scans_count, 0) + 1 WHERE id = ?").run(businessId);
+    await db.run("UPDATE businesses SET qr_scans_count = COALESCE(qr_scans_count, 0) + 1 WHERE id = ?", [businessId]);
     return { success: true };
   } catch (error) {
     return { success: false };
@@ -1027,11 +1018,11 @@ export async function recordQrScan(businessId: string) {
 
 export async function getBusinessAnalyticsAndTransactions(businessId: string) {
   try {
-    const bizRow = db.prepare("SELECT qr_scans_count, currency FROM businesses WHERE id = ?").get(businessId) as { qr_scans_count: number; currency: string } | undefined;
+    const bizRow = await db.get<{ qr_scans_count: number; currency: string }>("SELECT qr_scans_count, currency FROM businesses WHERE id = ?", [businessId]);
     const qrScansCount = bizRow?.qr_scans_count || 0;
     const currency = bizRow?.currency || "EGP";
 
-    let transactions = db.prepare(`
+    let transactions = await db.all<any>(`
       SELECT 
         t.id as id,
         t.bill_id,
@@ -1053,12 +1044,11 @@ export async function getBusinessAnalyticsAndTransactions(businessId: string) {
       LEFT JOIN feedback f ON f.transaction_id = t.id
       WHERE b.business_id = ?
       ORDER BY t.created_at DESC
-    `).all(businessId) as any[];
+    `, [businessId]);
 
-    // If no transactions exist yet, seed realistic historical data for testing/demo
     if (transactions.length === 0) {
-      const sampleSpots = db.prepare("SELECT id, label FROM spots WHERE business_id = ? LIMIT 5").all(businessId) as { id: string; label: string }[];
-      const sampleStaff = db.prepare("SELECT ip.id, u.name FROM individual_profiles ip JOIN users u ON u.id = ip.user_id WHERE ip.business_id = ? LIMIT 3").all(businessId) as { id: string; name: string }[];
+      const sampleSpots = await db.all<{ id: string; label: string }>("SELECT id, label FROM spots WHERE business_id = ? LIMIT 5", [businessId]);
+      const sampleStaff = await db.all<{ id: string; name: string }>("SELECT ip.id, u.name FROM individual_profiles ip JOIN users u ON u.id = ip.user_id WHERE ip.business_id = ? LIMIT 3", [businessId]);
 
       const now = Date.now();
       const dayMs = 24 * 60 * 60 * 1000;
@@ -1072,29 +1062,29 @@ export async function getBusinessAnalyticsAndTransactions(businessId: string) {
         { bill: 980, tip: 130, offset: 6.0 * dayMs, spot: sampleSpots[1]?.label || "Spot 2", spotId: sampleSpots[1]?.id },
       ];
 
-      db.transaction(() => {
-        mockData.forEach((m, idx) => {
+      await db.transaction(async (tx) => {
+        for (let idx = 0; idx < mockData.length; idx++) {
+          const m = mockData[idx];
           const billId = `bill-seed-${idx}-${Date.now()}`;
           const txId = `tx-seed-${idx}-${Date.now()}`;
           const createdAt = new Date(now - m.offset).toISOString();
           const staffId = sampleStaff[idx % (sampleStaff.length || 1)]?.id || null;
 
-          db.prepare(`
+          await tx`
             INSERT INTO bills (id, table_number, spot_id, business_id, individual_id, amount, status, items, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'PAID', '[]', ?)
-          `).run(billId, m.spot, m.spotId || null, businessId, staffId, m.bill, createdAt);
+            VALUES (${billId}, ${m.spot}, ${m.spotId || null}, ${businessId}, ${staffId}, ${m.bill}, 'PAID', '[]', ${createdAt})
+          `;
 
-          db.prepare(`
+          await tx`
             INSERT INTO transactions (id, bill_id, individual_id, amount_bill, amount_tip, currency, payment_status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'COMPLETED', ?)
-          `).run(txId, billId, staffId, m.bill, m.tip, currency, createdAt);
-        });
+            VALUES (${txId}, ${billId}, ${staffId}, ${m.bill}, ${m.tip}, ${currency}, 'COMPLETED', ${createdAt})
+          `;
+        }
 
-        db.prepare("UPDATE businesses SET qr_scans_count = 64 WHERE id = ? AND (qr_scans_count IS NULL OR qr_scans_count = 0)").run(businessId);
-      })();
+        await tx`UPDATE businesses SET qr_scans_count = 64 WHERE id = ${businessId} AND (qr_scans_count IS NULL OR qr_scans_count = 0)`;
+      });
 
-      // Re-fetch populated transactions
-      transactions = db.prepare(`
+      transactions = await db.all<any>(`
         SELECT 
           t.id as id,
           t.bill_id,
@@ -1116,7 +1106,7 @@ export async function getBusinessAnalyticsAndTransactions(businessId: string) {
         LEFT JOIN feedback f ON f.transaction_id = t.id
         WHERE b.business_id = ?
         ORDER BY t.created_at DESC
-      `).all(businessId) as any[];
+      `, [businessId]);
     }
 
     const totalTransactions = transactions.length;

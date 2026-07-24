@@ -17,12 +17,12 @@ export default async function BusinessSpotOrderPage({ params }: { params: Promis
   const { spotId } = await params;
 
   // 1. Fetch Manager
-  const managerUser = db.prepare(`
+  const managerUser = await db.get<any>(`
     SELECT id, name, email, role_id, business_id 
     FROM users 
     WHERE business_id = ? AND role_id = ? 
     LIMIT 1
-  `).get(businessId, SystemRole.BUSINESS_MANAGER) as any;
+  `, [businessId, SystemRole.BUSINESS_MANAGER]);
 
   if (!managerUser) {
     cookieStore.delete("business_id");
@@ -30,25 +30,24 @@ export default async function BusinessSpotOrderPage({ params }: { params: Promis
   }
 
   // 2. Fetch Spot
-  const spot = db.prepare(`SELECT * FROM spots WHERE id = ? AND business_id = ?`).get(spotId, businessId) as any;
+  const spot = await db.get(`SELECT * FROM spots WHERE id = ? AND business_id = ?`, [spotId, businessId]);
   if (!spot) {
     redirect("/business/dashboard");
   }
 
   // 3. Fetch Active Bill
-  const activeBill = db.prepare(`SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID'`).get(spotId) as any;
+  const activeBill = await db.get(`SELECT * FROM bills WHERE spot_id = ? AND status = 'UNPAID'`, [spotId]);
 
-  // 4. Fetch Menu Items (for adding to cart)
-  const menuItems = db.prepare(`
+  // 4. Fetch Menu Items
+  const menuItems = await db.all(`
     SELECT mi.*, mc.name as category_name
     FROM menu_items mi
     LEFT JOIN menu_categories mc ON mc.id = mi.category_id
     WHERE mi.business_id = ?
     ORDER BY mi.created_at DESC
-  `).all(businessId) as any[];
+  `, [businessId]);
 
-  // Also include the business currency inside the managerUser to satisfy SpotOrderClient's requirements
-  const business = db.prepare(`SELECT currency FROM businesses WHERE id = ?`).get(businessId) as any;
+  const business = await db.get<any>(`SELECT currency FROM businesses WHERE id = ?`, [businessId]);
   managerUser.currency = business?.currency || "EGP";
 
   return (

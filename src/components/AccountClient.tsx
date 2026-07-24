@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -42,16 +43,19 @@ export function AccountClient({ user }: AccountClientProps) {
   return (
     <div className="min-h-screen bg-[#FAF9F5] text-slate-900 font-sans pb-16">
       {/* Top Navbar */}
-      <header className="w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/business/locations">
-            <Button variant="secondary" size="sm">
-              ← Locations
-            </Button>
-          </Link>
-          <h1 className="text-base font-bold tracking-tight text-slate-900">
-            Owner Account Settings
-          </h1>
+      <header className="w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 py-3.5">
+        <div className="w-full max-w-2xl mx-auto px-4 sm:px-8 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/business/locations" title="Back">
+              <Button variant="ghost" size="icon-sm">
+                <ArrowLeft className="w-4 h-4" />
+                <span className="sr-only">Back</span>
+              </Button>
+            </Link>
+            <h1 className="text-base font-bold tracking-tight text-slate-900">
+              Owner Account Settings
+            </h1>
+          </div>
         </div>
       </header>
 

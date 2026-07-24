@@ -16,65 +16,59 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
   const { id: workspaceId } = await params;
 
   // Fetch individual details
-  const individual = db.prepare(`
+  const individual = await db.get(`
     SELECT
       ip.id, ip.avatar_url, ip.balance, ip.rating, ip.payout_method, ip.payout_detail, ip.role, ip.short_code, ip.business_id,
       u.name
     FROM individual_profiles ip
     JOIN users u ON u.id = ip.user_id
     WHERE ip.id = ?
-  `).get(individualId) as any;
+  `, [individualId]);
 
   if (!individual) {
     cookieStore.delete("individual_id");
     redirect("/individual/login");
   }
 
-  // Determine if it's personal or business workspace
   const isPersonal = workspaceId === "personal";
-  let activeBusiness = null;
+  let activeBusiness: any = null;
   let businesses: any[] = [];
 
   if (!isPersonal) {
-    // Verify they belong to this business
-    activeBusiness = db.prepare(`
+    activeBusiness = await db.get(`
       SELECT b.id, b.name, b.logo_url, b.currency, b.business_type, bm.role as member_role
       FROM businesses b
       JOIN business_members bm ON b.id = bm.business_id
       WHERE b.id = ? AND bm.individual_id = ? AND bm.status = 'ACTIVE'
-    `).get(workspaceId, individualId) as any;
+    `, [workspaceId, individualId]);
 
     if (!activeBusiness) {
-      redirect("/individual/hub"); // Not authorized for this business
+      redirect("/individual/hub");
     }
   }
 
-  // Spots for the active business
-  const spots = activeBusiness ? db.prepare(`
+  const spots = activeBusiness ? await db.all(`
     SELECT * FROM spots WHERE business_id = ? ORDER BY number ASC
-  `).all(activeBusiness.id) as any[] : [];
+  `, [activeBusiness.id]) : [];
 
-  // Fetch bills with spot short codes
-  const bills = activeBusiness ? db.prepare(`
+  const bills = activeBusiness ? await db.all(`
     SELECT b.*, t.short_code as table_short_code FROM bills b
     LEFT JOIN spots t ON t.id = b.spot_id
     WHERE b.business_id = ?
     ORDER BY b.created_at DESC
-  `).all(activeBusiness.id) as any[] : [];
+  `, [activeBusiness.id]) : [];
 
-  // Fetch menu items for the active business
-  const menuItems = activeBusiness ? db.prepare(`
+  const menuItems = activeBusiness ? await db.all(`
     SELECT mi.*, mc.name as category_name
     FROM menu_items mi
     LEFT JOIN menu_categories mc ON mc.id = mi.category_id
     WHERE mi.business_id = ?
     ORDER BY mi.created_at DESC
-  `).all(activeBusiness.id) as any[] : [];
+  `, [activeBusiness.id]) : [];
 
-  // Transaction history (filter by business if not personal)
   let transactions;
   if (isPersonal) {
-    transactions = db.prepare(`
+    transactions = await db.all(`
       SELECT
         t.id, ts.amount as amount_earned, t.currency, t.created_at,
         f.rating_stars, f.comments, f.tags
@@ -84,9 +78,9 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
       LEFT JOIN feedback f ON f.transaction_id = t.id
       WHERE ts.individual_id = ? AND b.business_id IS NULL
       ORDER BY t.created_at DESC
-    `).all(individualId) as any[];
+    `, [individualId]);
   } else {
-    transactions = db.prepare(`
+    transactions = await db.all(`
       SELECT
         t.id, ts.amount as amount_earned, t.currency, t.created_at,
         f.rating_stars, f.comments, f.tags
@@ -96,13 +90,12 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
       LEFT JOIN feedback f ON f.transaction_id = t.id
       WHERE ts.individual_id = ? AND b.business_id = ?
       ORDER BY t.created_at DESC
-    `).all(individualId, activeBusiness.id) as any[];
+    `, [individualId, activeBusiness.id]);
   }
 
-  // Payout history
-  const payouts = db.prepare(`
+  const payouts = await db.all(`
     SELECT * FROM payout_requests WHERE individual_id = ? ORDER BY created_at DESC
-  `).all(individualId) as any[];
+  `, [individualId]);
 
   return (
     <main style={{ minHeight: "100vh", padding: "0 0 20px 0" }}>
@@ -111,7 +104,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
         transactions={transactions}
         payouts={payouts}
         spots={spots}
-        businesses={businesses} // Empty, since we don't switch businesses from here anymore
+        businesses={businesses}
         activeBusinessId={activeBusiness?.id || ""}
         bills={bills}
         menuItems={menuItems}

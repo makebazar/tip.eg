@@ -30,20 +30,19 @@ export async function getManagerUserId(): Promise<string | null> {
   const userId = cookieStore.get("business_user_id")?.value;
   if (userId) return userId;
 
-  // Fallback: If business_id cookie exists, find owner user_id from user_businesses or users
   const activeBizId = cookieStore.get("business_id")?.value;
   if (activeBizId) {
-    const row = db.prepare(`
+    const row = await db.get<{ user_id: string }>(`
       SELECT user_id FROM user_businesses WHERE business_id = ?
       LIMIT 1
-    `).get(activeBizId) as { user_id: string } | undefined;
+    `, [activeBizId]);
 
     if (row?.user_id) return row.user_id;
 
-    const userRow = db.prepare(`
+    const userRow = await db.get<{ id: string }>(`
       SELECT id FROM users WHERE business_id = ? AND role_id = 2
       LIMIT 1
-    `).get(activeBizId) as { id: string } | undefined;
+    `, [activeBizId]);
 
     if (userRow?.id) return userRow.id;
   }
@@ -67,25 +66,25 @@ export async function getUserLocations(): Promise<{
     const cookieStore = await cookies();
     const activeBusinessId = cookieStore.get("business_id")?.value || null;
 
-    const user = db.prepare("SELECT id, name, email FROM users WHERE id = ?").get(userId) as any;
+    const user = await db.get<any>("SELECT id, name, email FROM users WHERE id = ?", [userId]);
     if (!user) {
       return { success: false, error: "User account not found" };
     }
 
-    // Fetch all businesses linked to this user via user_businesses or owner_id
-    const rows = db.prepare(`
+    const rows = await db.all<any>(`
       SELECT DISTINCT b.*
       FROM businesses b
       LEFT JOIN user_businesses ub ON ub.business_id = b.id
       WHERE ub.user_id = ? OR b.owner_id = ? OR (SELECT business_id FROM users WHERE id = ?) = b.id
       ORDER BY b.created_at DESC
-    `).all(userId, userId, userId) as any[];
+    `, [userId, userId, userId]);
 
-    const locations: LocationWithStats[] = rows.map((b) => {
-      const spotsCountRow = db.prepare("SELECT COUNT(*) as c FROM spots WHERE business_id = ?").get(b.id) as { c: number };
-      const staffCountRow = db.prepare("SELECT COUNT(*) as c FROM business_members WHERE business_id = ? AND status = 'ACTIVE'").get(b.id) as { c: number };
+    const locations: LocationWithStats[] = [];
+    for (const b of rows) {
+      const spotsCountRow = await db.get<{ c: string }>("SELECT COUNT(*) as c FROM spots WHERE business_id = ?", [b.id]);
+      const staffCountRow = await db.get<{ c: string }>("SELECT COUNT(*) as c FROM business_members WHERE business_id = ? AND status = 'ACTIVE'", [b.id]);
 
-      return {
+      locations.push({
         id: b.id,
         name: b.name,
         name_ar: b.name_ar,
@@ -99,12 +98,12 @@ export async function getUserLocations(): Promise<{
         payout_detail: b.payout_detail,
         owner_id: b.owner_id,
         balance: b.balance || 0,
-        spots_count: spotsCountRow?.c || 0,
-        staff_count: staffCountRow?.c || 0,
+        spots_count: parseInt(spotsCountRow?.c || "0", 10),
+        staff_count: parseInt(staffCountRow?.c || "0", 10),
         created_at: b.created_at,
         is_active: b.id === activeBusinessId,
-      };
-    });
+      });
+    }
 
     return {
       success: true,
@@ -124,12 +123,11 @@ export async function selectActiveLocation(businessId: string) {
     return { success: false, error: "Not authenticated" };
   }
 
-  // Verify access
-  const access = db.prepare(`
+  const access = await db.get(`
     SELECT b.id FROM businesses b
     LEFT JOIN user_businesses ub ON ub.business_id = b.id
     WHERE b.id = ? AND (ub.user_id = ? OR b.owner_id = ?)
-  `).get(businessId, userId, userId);
+  `, [businessId, userId, userId]);
 
   if (!access) {
     return { success: false, error: "Access denied to this business location" };
@@ -170,26 +168,21 @@ export async function createLocation(formData: FormData) {
     const businessId = `biz-${Date.now()}`;
     const ubId = `ub-${userId}-${businessId}`;
 
-    db.transaction(() => {
-      // Create business point
-      db.prepare(`
+    await db.transaction(async (tx) => {
+      await tx`
         INSERT INTO businesses (id, name, name_ar, city, address, currency, business_type, payout_method, payout_detail, owner_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(businessId, name, name_ar, city, address, currency, business_type, payout_method, payout_detail, userId);
+        VALUES (${businessId}, ${name}, ${name_ar}, ${city}, ${address}, ${currency}, ${business_type}, ${payout_method}, ${payout_detail}, ${userId})
+      `;
 
-      // Link to user_businesses
-      db.prepare(`
-        INSERT OR IGNORE INTO user_businesses (id, user_id, business_id, role)
-        VALUES (?, ?, ?, 'OWNER')
-      `).run(ubId, userId, businessId);
+      await tx`
+        INSERT INTO user_businesses (id, user_id, business_id, role)
+        VALUES (${ubId}, ${userId}, ${businessId}, 'OWNER')
+        ON CONFLICT DO NOTHING
+      `;
 
-      // Set user.business_id if null
-      db.prepare(`
-        UPDATE users SET business_id = ? WHERE id = ? AND business_id IS NULL
-      `).run(businessId, userId);
-    })();
+      await tx`UPDATE users SET business_id = ${businessId} WHERE id = ${userId} AND business_id IS NULL`;
+    });
 
-    // Set cookie to newly created location
     const cookieStore = await cookies();
     cookieStore.set("business_id", businessId, {
       httpOnly: true,
@@ -226,11 +219,11 @@ export async function updateLocation(businessId: string, formData: FormData) {
   }
 
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE businesses
       SET name = ?, name_ar = ?, city = ?, address = ?, currency = ?, business_type = ?, payout_method = ?, payout_detail = ?
       WHERE id = ?
-    `).run(name, name_ar, city, address, currency, business_type, payout_method, payout_detail, businessId);
+    `, [name, name_ar, city, address, currency, business_type, payout_method, payout_detail, businessId]);
 
     revalidatePath("/business/locations");
     revalidatePath("/business/settings");
@@ -247,11 +240,11 @@ export async function updateLocationPayouts(businessId: string, payoutMethod: st
   }
 
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE businesses
       SET payout_method = ?, payout_detail = ?
       WHERE id = ?
-    `).run(payoutMethod, payoutDetail, businessId);
+    `, [payoutMethod, payoutDetail, businessId]);
 
     revalidatePath("/business/locations");
     revalidatePath("/business/settings");
@@ -268,21 +261,20 @@ export async function deleteLocation(businessId: string) {
   }
 
   try {
-    // Check if user has permission
-    const access = db.prepare(`
+    const access = await db.get(`
       SELECT b.id FROM businesses b
       LEFT JOIN user_businesses ub ON ub.business_id = b.id
       WHERE b.id = ? AND (ub.user_id = ? OR b.owner_id = ?)
-    `).get(businessId, userId, userId);
+    `, [businessId, userId, userId]);
 
     if (!access) {
       return { success: false, error: "Access denied" };
     }
 
-    db.transaction(() => {
-      db.prepare("DELETE FROM user_businesses WHERE business_id = ?").run(businessId);
-      db.prepare("DELETE FROM businesses WHERE id = ?").run(businessId);
-    })();
+    await db.transaction(async (tx) => {
+      await tx`DELETE FROM user_businesses WHERE business_id = ${businessId}`;
+      await tx`DELETE FROM businesses WHERE id = ${businessId}`;
+    });
 
     const cookieStore = await cookies();
     if (cookieStore.get("business_id")?.value === businessId) {
@@ -311,9 +303,9 @@ export async function updateOwnerAccount(formData: FormData) {
 
   try {
     if (password && password.length >= 4) {
-      db.prepare("UPDATE users SET name = ?, password_hash = ? WHERE id = ?").run(name, password, userId);
+      await db.run("UPDATE users SET name = ?, password_hash = ? WHERE id = ?", [name, password, userId]);
     } else {
-      db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name, userId);
+      await db.run("UPDATE users SET name = ? WHERE id = ?", [name, userId]);
     }
 
     revalidatePath("/business/account");
@@ -329,13 +321,13 @@ export async function getLocationManagers(businessId: string) {
   if (!userId) return { success: false, managers: [] };
 
   try {
-    const managers = db.prepare(`
+    const managers = await db.all<{ id: string; name: string; email: string; role: string; created_at: string }>(`
       SELECT u.id, u.name, u.email, ub.role, ub.created_at
       FROM user_businesses ub
       JOIN users u ON u.id = ub.user_id
       WHERE ub.business_id = ?
       ORDER BY ub.created_at ASC
-    `).all(businessId) as { id: string; name: string; email: string; role: string; created_at: string }[];
+    `, [businessId]);
 
     return { success: true, managers };
   } catch (error: any) {
@@ -351,36 +343,33 @@ export async function addLocationManager(businessId: string, email: string) {
   if (!cleanEmail) return { success: false, error: "Email is required" };
 
   try {
-    let targetUser = db.prepare("SELECT id, name, email, role_id FROM users WHERE email = ?").get(cleanEmail) as { id: string; name: string; email: string; role_id: number } | undefined;
+    let targetUser = await db.get<{ id: string; name: string; email: string; role_id: number }>("SELECT id, name, email, role_id FROM users WHERE email = ?", [cleanEmail]);
     let generatedPassword = "";
     let isNewUser = false;
 
     if (!targetUser) {
       isNewUser = true;
-      // Auto-generate a clean 6-digit password
       generatedPassword = Math.floor(100000 + Math.random() * 900000).toString();
 
       const newUserId = `usr-${Date.now()}`;
       const managerName = cleanEmail.split("@")[0];
-      db.prepare(`
+      await db.run(`
         INSERT INTO users (id, name, email, password_hash, role_id, business_id)
         VALUES (?, ?, ?, ?, 2, ?)
-      `).run(newUserId, managerName, cleanEmail, generatedPassword, businessId);
+      `, [newUserId, managerName, cleanEmail, generatedPassword, businessId]);
 
       targetUser = { id: newUserId, name: managerName, email: cleanEmail, role_id: 2 };
     } else {
-      // If user exists as individual (role_id = 3), promote to manager (role_id = 2) if needed
       if (targetUser.role_id === 3) {
-        db.prepare("UPDATE users SET role_id = 2 WHERE id = ?").run(targetUser.id);
+        await db.run("UPDATE users SET role_id = 2 WHERE id = ?", [targetUser.id]);
       }
     }
 
-    // Link in user_businesses junction table
     const ubId = `ub-${targetUser.id}-${businessId}`;
-    db.prepare(`
-      INSERT OR IGNORE INTO user_businesses (id, user_id, business_id, role)
-      VALUES (?, ?, ?, 'MANAGER')
-    `).run(ubId, targetUser.id, businessId);
+    await db.run(`
+      INSERT INTO user_businesses (id, user_id, business_id, role)
+      VALUES (?, ?, ?, 'MANAGER') ON CONFLICT DO NOTHING
+    `, [ubId, targetUser.id, businessId]);
 
     revalidatePath("/business/locations");
     return { 
@@ -400,10 +389,10 @@ export async function removeLocationManager(businessId: string, targetUserId: st
   if (!userId) return { success: false, error: "Not authenticated" };
 
   try {
-    db.prepare(`
+    await db.run(`
       DELETE FROM user_businesses
       WHERE business_id = ? AND user_id = ?
-    `).run(businessId, targetUserId);
+    `, [businessId, targetUserId]);
 
     revalidatePath("/business/locations");
     return { success: true };
@@ -411,4 +400,3 @@ export async function removeLocationManager(businessId: string, targetUserId: st
     return { success: false, error: error?.message || "Failed to remove manager" };
   }
 }
-

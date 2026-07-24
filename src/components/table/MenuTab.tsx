@@ -132,51 +132,74 @@ export default function MenuTab() {
     }
   }, [waiter.restaurant_id]);
 
-  // Fallback to static items if DB items empty, and attach active promo prices
-  const rawItems: MenuItemData[] = (dbMenuItems.length > 0
-    ? dbMenuItems.map((item) => {
-        const promo = dbPromotions.find((p) => {
-          if (p.status && p.status !== "ACTIVE") return false;
-          if (!p.discount_price || p.discount_price <= 0) return false;
+  // Helper function to match promo to a menu item
+  const isPromoMatchingItem = (p: any, item: any): boolean => {
+    if (p.status && p.status !== "ACTIVE") return false;
 
-          if (
-            p.item_id &&
-            (p.item_id === item.id ||
-              p.item_id.replace("item-rest-", "item-") === item.id.replace("item-rest-", "item-"))
-          ) {
-            return true;
-          }
-          if (p.item_name && p.item_name.toLowerCase() === item.name.toLowerCase()) return true;
+    const pItemId = p.item_id ? String(p.item_id).toLowerCase() : "";
+    const itemId = item.id ? String(item.id).toLowerCase() : "";
 
-          return false;
-        });
+    if (pItemId && itemId) {
+      if (pItemId === itemId) return true;
+      const cleanPId = pItemId.replace("item-rest-", "").replace("item-", "");
+      const cleanItemId = itemId.replace("item-rest-", "").replace("item-", "");
+      if (cleanPId === cleanItemId) return true;
+    }
 
-        const effectivePrice = promo && promo.discount_price ? promo.discount_price : item.price;
-        const originalPrice = promo && promo.discount_price && promo.discount_price < item.price ? item.price : undefined;
+    if (p.item_name && item.name && p.item_name.toLowerCase().trim() === item.name.toLowerCase().trim()) {
+      return true;
+    }
 
-        return {
-          id: item.id,
-          name: item.name,
-          name_ar: item.name_ar || undefined,
-          description: item.description || "",
-          price: effectivePrice,
-          original_price: originalPrice,
-          discount_price: promo?.discount_price || undefined,
-          promo_title: promo ? (language === "ar" && promo.title_ar ? promo.title_ar : promo.title) : undefined,
-          category: item.category_id || "all",
-          image: item.image_url || "",
-          weight_volume: item.weight_volume || null,
-          ingredients: item.ingredients || null,
-          spiciness: item.spiciness || 0,
-          dietary_tags: item.dietary_tags || null,
-          calories: item.calories || null,
-          is_available: item.is_available ?? 1,
-        };
-      })
-    : (waiter.restaurant_id && menuDb[waiter.restaurant_id]
-        ? menuDb[waiter.restaurant_id].map((i) => ({ ...i, weight_volume: null, ingredients: null, spiciness: 0, dietary_tags: null, calories: null, is_available: 1 }))
-        : defaultMenuItems.map((i) => ({ ...i, weight_volume: null, ingredients: null, spiciness: 0, dietary_tags: null, calories: null, is_available: 1 }))
-      )) as MenuItemData[];
+    // Title / Name keyword match fallback
+    if (p.title && item.name) {
+      const pTitle = p.title.toLowerCase();
+      const itemName = item.name.toLowerCase();
+      if (pTitle.includes(itemName) || itemName.includes(pTitle.replace("special:", "").replace("offer:", "").trim())) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // Attach active promo prices to items from DB or fallback
+  const mapItemWithPromo = (item: any): MenuItemData => {
+    const promo = dbPromotions.find((p) => {
+      if (!p.discount_price || p.discount_price <= 0) return false;
+      return isPromoMatchingItem(p, item);
+    });
+
+    const effectivePrice = promo && promo.discount_price ? promo.discount_price : item.price;
+    const originalPrice = promo && promo.discount_price && promo.discount_price < item.price ? item.price : undefined;
+
+    return {
+      id: item.id,
+      name: item.name,
+      name_ar: item.name_ar || undefined,
+      description: item.description || "",
+      price: effectivePrice,
+      original_price: originalPrice,
+      discount_price: promo?.discount_price || undefined,
+      promo_title: promo ? (language === "ar" && promo.title_ar ? promo.title_ar : promo.title) : undefined,
+      category: item.category_id || item.category || "all",
+      image: item.image_url || item.image || "",
+      weight_volume: item.weight_volume || null,
+      ingredients: item.ingredients || null,
+      spiciness: item.spiciness || 0,
+      dietary_tags: typeof item.dietary_tags === "string" ? item.dietary_tags : (Array.isArray(item.dietary_tags) ? JSON.stringify(item.dietary_tags) : null),
+      calories: item.calories || null,
+      is_available: item.is_available ?? 1,
+    };
+  };
+
+  const sourceItems =
+    dbMenuItems.length > 0
+      ? dbMenuItems
+      : waiter.restaurant_id && menuDb[waiter.restaurant_id]
+      ? menuDb[waiter.restaurant_id]
+      : defaultMenuItems;
+
+  const rawItems: MenuItemData[] = sourceItems.map(mapItemWithPromo);
 
   const getCartQuantity = (itemName: string): number => {
     const found = cartItems.find((i) => i.item.name === itemName);
@@ -475,15 +498,15 @@ export default function MenuTab() {
               className="promo-banner"
               style={{ backgroundImage: `url(${promo.image_url})`, cursor: "pointer" }}
               onClick={() => {
-                if (promo.type === "ITEM_DISCOUNT" && promo.item_id) {
-                  const item = rawItems.find(i => i.id === promo.item_id);
+                if (promo.type === "ITEM_DISCOUNT") {
+                  const item = rawItems.find(i => isPromoMatchingItem(promo, i));
                   if (item) {
                     setActiveDetailItem(item);
                     setDetailQty(1);
+                    return;
                   }
-                } else {
-                  setActiveBannerPromo(promo);
                 }
+                setActiveBannerPromo(promo);
               }}
             >
               <div className="promo-banner-badge" style={{ backdropFilter: "blur(8px)" }}>

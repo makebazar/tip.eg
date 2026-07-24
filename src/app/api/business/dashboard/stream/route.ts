@@ -3,7 +3,7 @@ import db from "@/lib/db";
 import { eventBus } from "@/lib/events";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // Allow long connections on Vercel/Next.js if configured
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const cookieStore = await cookies();
@@ -18,34 +18,54 @@ export async function GET(request: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const sendUpdate = () => {
+      const sendUpdate = async () => {
         try {
-          // Fetch bills
-          const bills = db.prepare(`
+          const bills = await db.all(`
             SELECT b.*, t.short_code as table_short_code FROM bills b
             LEFT JOIN spots t ON t.id = b.spot_id
             WHERE b.business_id = ?
             ORDER BY b.created_at DESC
-          `).all(businessId);
+          `, [businessId]);
 
-          // Fetch spots
-          const spots = db.prepare(`
+          const spots = await db.all(`
             SELECT s.*
             FROM spots s
             WHERE s.business_id = ?
             ORDER BY s.number ASC
-          `).all(businessId);
+          `, [businessId]);
 
-          // Fetch menuItems
-          const menuItems = db.prepare(`
+          const menuItems = await db.all(`
             SELECT mi.*, mc.name as category_name
             FROM menu_items mi
             LEFT JOIN menu_categories mc ON mc.id = mi.category_id
             WHERE mi.business_id = ?
             ORDER BY mi.created_at DESC
-          `).all(businessId);
+          `, [businessId]);
 
-          const payloadObj = { bills, spots, menuItems };
+          const restaurant = await db.get("SELECT * FROM businesses WHERE id = ?", [businessId]);
+
+          const totalTipsRow = await db.get<any>(`
+            SELECT SUM(t.amount_tip) as total_tips 
+            FROM transactions t 
+            LEFT JOIN bills b ON b.id = t.bill_id
+            LEFT JOIN individual_profiles wp ON wp.id = t.individual_id 
+            WHERE (wp.business_id = ? OR b.business_id = ?) AND t.payment_status = 'COMPLETED'
+          `, [businessId, businessId]);
+
+          const totalBillsPaidRow = await db.get<any>(`
+            SELECT SUM(COALESCE(t.amount_bill, b.amount)) as total_bills 
+            FROM bills b 
+            LEFT JOIN transactions t ON t.bill_id = b.id AND t.payment_status = 'COMPLETED'
+            WHERE b.business_id = ? AND (b.status = 'PAID' OR t.payment_status = 'COMPLETED')
+          `, [businessId]);
+
+          const stats = {
+            totalTips: parseFloat(totalTipsRow?.total_tips || "0"),
+            avgRating: 5.0,
+            totalBillsPaid: parseFloat(totalBillsPaidRow?.total_bills || "0"),
+          };
+
+          const payloadObj = { bills, spots, menuItems, restaurant, stats };
           const payloadStr = JSON.stringify(payloadObj);
 
           controller.enqueue(encoder.encode(`data: ${payloadStr}\n\n`));
@@ -54,22 +74,18 @@ export async function GET(request: Request) {
         }
       };
 
-      // 1. Send initial data immediately
-      sendUpdate();
+      await sendUpdate();
 
-      // 2. Attach listener to the global event bus
       eventBus.on(eventName, sendUpdate);
 
-      // 3. Keep connection alive with periodic pings (since we removed setInterval polling)
       const pingInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: ping\n\n`));
         } catch (e) {
           clearInterval(pingInterval);
         }
-      }, 15000); // 15 seconds
+      }, 15000);
 
-      // 4. Clean up when client disconnects
       request.signal.addEventListener("abort", () => {
         clearInterval(pingInterval);
         eventBus.off(eventName, sendUpdate);

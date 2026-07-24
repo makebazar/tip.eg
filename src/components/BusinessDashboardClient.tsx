@@ -2,10 +2,12 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { LogOut, Users, Utensils, Star, Plus, Settings, TrendingUp, Trash2, QrCode, Globe, Copy, Check, UserPlus, Receipt, Pencil, Building2 } from "lucide-react";
 import styles from "@/app/business/dashboard/business.module.css";
+import { Button } from "@/components/ui/button";
 import { logoutBusiness } from "@/app/actions/auth";
 import { addIndividualToBusiness, updateTipSettings, updateBusinessType, createMockBill, withdrawBusinessBalance, assignIndividualToSpot, createSpot, updateBill, cancelBill, deleteSpot, findIndividualByEmail, linkIndividualToBusiness, unlinkIndividualFromBusiness, updateMemberRole, toggleStopList, addItemToSpotCart, removeItemFromSpotCart, approvePendingItems } from "@/app/actions/business";
 import { BusinessAnalyticsClient } from "@/components/BusinessAnalyticsClient";
@@ -84,9 +86,10 @@ interface DashboardProps {
   menuItems?: MenuItemData[];
 }
 
-export default function BusinessDashboardClient({ restaurant: initialRestaurant, waiters, bills: initialBills, feedbacks, spots: initialSpots, stats, menuItems: initialMenuItems = [] }: DashboardProps) {
+export default function BusinessDashboardClient({ restaurant: initialRestaurant, waiters, bills: initialBills, feedbacks, spots: initialSpots, stats: initialStats, menuItems: initialMenuItems = [] }: DashboardProps) {
   const router = useRouter();
   const [restaurant, setRestaurant] = useState(initialRestaurant);
+  const [stats, setStats] = useState(initialStats);
   const [activeTab, setActiveTab] = useState<"bills" | "analytics" | "stoplist" | "settings">("bills");
 
   // Local state for SSE real-time updates
@@ -104,6 +107,8 @@ export default function BusinessDashboardClient({ restaurant: initialRestaurant,
         if (data.bills) setBills(data.bills);
         if (data.spots) setSpots(data.spots);
         if (data.menuItems) setMenuItems(data.menuItems);
+        if (data.restaurant) setRestaurant(data.restaurant);
+        if (data.stats) setStats(data.stats);
       } catch (err) {
         console.error("SSE parsing error", err);
       }
@@ -287,22 +292,28 @@ export default function BusinessDashboardClient({ restaurant: initialRestaurant,
       <div className={styles.header}>
         <div className={styles.titleInfo}>
           <h1>{restaurant.name} Dashboard</h1>
-          <p>{restaurant.address || "Main Location"} | Category: <strong>{businessType}</strong></p>
+          <p>{restaurant.address || "Main Location"}</p>
         </div>
-        <div className={styles.actions}>
-          <Link href="/business/locations" className={styles.secondaryBtn} style={{ textDecoration: "none" }}>
-            <Building2 size={16} />
-            <span>Locations</span>
+        <div className="flex items-center gap-2">
+          <Link href="/business/locations" title="Locations">
+            <Button variant="secondary" size="icon-sm">
+              <Building2 className="w-4 h-4 text-slate-600" />
+              <span className="sr-only">Locations</span>
+            </Button>
           </Link>
-          <Link href="/business/settings" className={styles.secondaryBtn} style={{ textDecoration: "none" }}>
-            Settings
+          <Link href="/business/settings" title="Settings">
+            <Button variant="secondary" size="icon-sm">
+              <Settings className="w-4 h-4 text-slate-600" />
+              <span className="sr-only">Settings</span>
+            </Button>
           </Link>
-          <button className={styles.secondaryBtn} onClick={() => setWithdrawModalOpen(true)} disabled={restaurant.balance <= 0}>
+          <Button variant="secondary" size="sm" onClick={() => setWithdrawModalOpen(true)} disabled={restaurant.balance <= 0}>
             Withdraw {terms.service} Funds
-          </button>
-          <button className={styles.logoutBtn} onClick={() => logoutBusiness()}>
-            Logout
-          </button>
+          </Button>
+          <Button variant="destructive" size="icon-sm" onClick={() => logoutBusiness()} title="Logout">
+            <LogOut className="w-4 h-4" />
+            <span className="sr-only">Logout</span>
+          </Button>
         </div>
       </div>
 
@@ -314,9 +325,13 @@ export default function BusinessDashboardClient({ restaurant: initialRestaurant,
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>{terms.service} Balance</span>
-            <span className={styles.statValue}>
-              {restaurant.balance.toFixed(2)} {restaurant.currency}
-            </span>
+            <div className={styles.statValue}>
+              <NumberFlow 
+                value={restaurant.balance} 
+                format={{ style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }} 
+              />{" "}
+              <span>{restaurant.currency}</span>
+            </div>
           </div>
         </div>
 
@@ -326,9 +341,13 @@ export default function BusinessDashboardClient({ restaurant: initialRestaurant,
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>{terms.service} Sales</span>
-            <span className={styles.statValue}>
-              {stats.totalBillsPaid.toFixed(2)} {restaurant.currency}
-            </span>
+            <div className={styles.statValue}>
+              <NumberFlow 
+                value={stats.totalBillsPaid} 
+                format={{ style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }} 
+              />{" "}
+              <span>{restaurant.currency}</span>
+            </div>
           </div>
         </div>
 
@@ -338,9 +357,13 @@ export default function BusinessDashboardClient({ restaurant: initialRestaurant,
           </div>
           <div className={styles.statInfo}>
             <span className={styles.statLabel}>Total Tips</span>
-            <span className={styles.statValue}>
-              {stats.totalTips.toFixed(2)} {restaurant.currency}
-            </span>
+            <div className={styles.statValue}>
+              <NumberFlow 
+                value={stats.totalTips} 
+                format={{ style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }} 
+              />{" "}
+              <span>{restaurant.currency}</span>
+            </div>
           </div>
         </div>
       </div>

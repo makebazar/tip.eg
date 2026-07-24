@@ -12,36 +12,30 @@ interface LayoutProps {
 export default async function TableLayout({ params, children }: LayoutProps) {
   const { tableCode } = (await params) as { tableCode: string };
 
-  // 1. Fetch physical spot by its short_code
-  const table = db.prepare(`
+  const table = await db.get(`
     SELECT * FROM spots WHERE short_code = ?
-  `).get(tableCode) as any;
+  `, [tableCode]);
 
   if (!table) {
     notFound();
   }
 
-  // Increment QR Scans Count for venue
   try {
-    db.prepare("UPDATE businesses SET qr_scans_count = COALESCE(qr_scans_count, 0) + 1 WHERE id = ?").run(table.business_id);
-  } catch (err) {
-    // Non-blocking
-  }
+    await db.run("UPDATE businesses SET qr_scans_count = COALESCE(qr_scans_count, 0) + 1 WHERE id = ?", [table.business_id]);
+  } catch (err) {}
 
-  // 2. Fetch the active UNPAID bill for this physical spot
-  const bill = db.prepare(`
+  const bill = await db.get(`
     SELECT * FROM bills 
     WHERE spot_id = ? AND status = 'UNPAID'
     ORDER BY created_at DESC 
     LIMIT 1
-  `).get(table.id) as any;
+  `, [table.id]);
 
-  // 3. Resolve which individual/waiter to show
   let waiter: any = null;
   const targetIndividualId = (bill && bill.individual_id) || table.assigned_individual_id;
 
   if (targetIndividualId) {
-    waiter = db.prepare(`
+    waiter = await db.get(`
       SELECT 
         wp.id, wp.avatar_url, wp.balance, wp.rating, wp.saving_goal, wp.saving_goal_ar, wp.business_id as restaurant_id, wp.role,
         u.name as name, u.name_ar as name_ar,
@@ -50,12 +44,11 @@ export default async function TableLayout({ params, children }: LayoutProps) {
       JOIN users u ON u.id = wp.user_id
       LEFT JOIN businesses r ON r.id = wp.business_id
       WHERE wp.id = ?
-    `).get(targetIndividualId);
+    `, [targetIndividualId]);
   }
 
-  // If no active bill or no waiter on the bill, pick the first staff member as default
   if (!waiter) {
-    const business = db.prepare("SELECT * FROM businesses WHERE id = ?").get(table.business_id) as any;
+    const business = await db.get<any>("SELECT * FROM businesses WHERE id = ?", [table.business_id]);
     if (business) {
       waiter = {
         id: "common-pool",
@@ -77,23 +70,22 @@ export default async function TableLayout({ params, children }: LayoutProps) {
   }
 
   if (!waiter) {
-    notFound(); // No waiter set up for this business at all
+    notFound();
   }
 
-  // 4. Fetch bartender & kitchen profiles for this restaurant/business
-  const bartender = waiter.restaurant_id ? db.prepare(`
+  const bartender = waiter.restaurant_id ? await db.get(`
     SELECT wp.id, wp.avatar_url, wp.balance, wp.rating, wp.saving_goal, wp.saving_goal_ar, u.name, u.name_ar
     FROM individual_profiles wp
     JOIN users u ON u.id = wp.user_id
     WHERE wp.business_id = ? AND wp.id = ?
-  `).get(waiter.restaurant_id, `bartender-rest-${waiter.restaurant_id}`) as any : null;
+  `, [waiter.restaurant_id, `bartender-rest-${waiter.restaurant_id}`]) : null;
 
-  const kitchen = waiter.restaurant_id ? db.prepare(`
+  const kitchen = waiter.restaurant_id ? await db.get(`
     SELECT wp.id, wp.avatar_url, wp.balance, wp.rating, wp.saving_goal, wp.saving_goal_ar, u.name, u.name_ar
     FROM individual_profiles wp
     JOIN users u ON u.id = wp.user_id
     WHERE wp.business_id = ? AND wp.id = ?
-  `).get(waiter.restaurant_id, `kitchen-rest-${waiter.restaurant_id}`) as any : null;
+  `, [waiter.restaurant_id, `kitchen-rest-${waiter.restaurant_id}`]) : null;
 
   return (
     <TableStateProvider 

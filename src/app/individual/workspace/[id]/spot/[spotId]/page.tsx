@@ -15,64 +15,62 @@ export default async function SpotOrderPage({ params }: { params: Promise<{ id: 
 
   const { id: workspaceId, spotId } = await params;
 
-  // Personal workspace doesn't have spots
   if (workspaceId === "personal") {
     redirect("/individual/hub");
   }
 
-  // Verify they belong to this business
-  const activeBusiness = db.prepare(`
+  const activeBusiness = await db.get(`
     SELECT b.id, b.name, b.logo_url, b.currency, b.business_type, bm.role as member_role
     FROM businesses b
     JOIN business_members bm ON b.id = bm.business_id
     WHERE b.id = ? AND bm.individual_id = ? AND bm.status = 'ACTIVE'
-  `).get(workspaceId, individualId) as any;
+  `, [workspaceId, individualId]);
 
   if (!activeBusiness) {
-    redirect("/individual/hub"); // Not authorized for this business
+    redirect("/individual/hub");
   }
 
-  // Get the spot
-  const spot = db.prepare(`
+  const spot = await db.get(`
     SELECT * FROM spots WHERE id = ? AND business_id = ?
-  `).get(spotId, activeBusiness.id) as any;
+  `, [spotId, activeBusiness.id]);
 
   if (!spot) {
-    redirect(`/individual/workspace/${workspaceId}`); // Spot not found
+    redirect(`/individual/workspace/${workspaceId}`);
   }
 
-  // Waiter profile info needed for currency, id, etc.
-  const individual = db.prepare(`
+  const individual = await db.get(`
     SELECT ip.id
     FROM individual_profiles ip
     WHERE ip.id = ?
-  `).get(individualId) as any;
+  `, [individualId]);
 
-  // Fetch the active bill for this spot
-  const bill = db.prepare(`
+  const bill = await db.get(`
     SELECT b.*, t.short_code as table_short_code 
     FROM bills b
     LEFT JOIN spots t ON t.id = b.spot_id
     WHERE b.spot_id = ? AND b.status = 'UNPAID'
-  `).get(spot.id) as any;
+  `, [spot.id]);
 
-  // Fetch menu items for the active business
-  const menuItems = db.prepare(`
+  const menuItems = await db.all(`
     SELECT mi.*, mc.name as category_name
     FROM menu_items mi
     LEFT JOIN menu_categories mc ON mc.id = mi.category_id
     WHERE mi.business_id = ?
     ORDER BY mi.created_at DESC
-  `).all(activeBusiness.id) as any[];
+  `, [activeBusiness.id]);
 
-  // Fetch all spots for the transfer modal
-  const allSpots = db.prepare(`
+  const rawSpots = await db.all<any>(`
     SELECT s.id, s.label, s.assigned_individual_id, 
            (SELECT count(*) FROM bills b WHERE b.spot_id = s.id AND b.status = 'UNPAID') as has_active_bill 
     FROM spots s 
     WHERE s.business_id = ?
     ORDER BY s.label ASC
-  `).all(activeBusiness.id) as any[];
+  `, [activeBusiness.id]);
+
+  const allSpots = rawSpots.map(s => ({
+    ...s,
+    has_active_bill: parseInt(s.has_active_bill || "0", 10)
+  }));
 
   return (
     <SpotOrderClient

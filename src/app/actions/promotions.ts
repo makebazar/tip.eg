@@ -61,13 +61,13 @@ export async function getAdminPromotions(businessIdInput?: string) {
       return { success: false, error: "Authentication required", promotions: [], menuItems: [] };
     }
 
-    const rawPromos = db.prepare(`
+    const rawPromos = await db.all<Promotion>(`
       SELECT p.*, mi.name as item_name, mi.price as item_original_price
       FROM promotions p
       LEFT JOIN menu_items mi ON mi.id = p.item_id
       WHERE p.business_id = ?
       ORDER BY p.created_at DESC
-    `).all(bizId) as Promotion[];
+    `, [bizId]);
 
     const nowIso = new Date().toISOString();
 
@@ -90,12 +90,12 @@ export async function getAdminPromotions(businessIdInput?: string) {
       };
     });
 
-    const menuItems = db.prepare(`
+    const menuItems = await db.all<MenuItemSimple>(`
       SELECT id, name, price, image_url 
       FROM menu_items 
       WHERE business_id = ? AND is_available = 1
       ORDER BY name ASC
-    `).all(bizId) as MenuItemSimple[];
+    `, [bizId]);
 
     return { success: true, promotions, menuItems };
   } catch (error: unknown) {
@@ -125,12 +125,12 @@ export async function savePromotion(data: SavePromotionInput) {
     const status = data.status || "ACTIVE";
 
     if (isUpdate) {
-      db.prepare(`
+      await db.run(`
         UPDATE promotions 
         SET type = ?, title = ?, title_ar = ?, description = ?, description_ar = ?, 
             image_url = ?, item_id = ?, discount_price = ?, active_from = ?, active_to = ?, status = ?
         WHERE id = ? AND business_id = ?
-      `).run(
+      `, [
         data.type,
         data.title.trim(),
         data.title_ar?.trim() || null,
@@ -144,13 +144,13 @@ export async function savePromotion(data: SavePromotionInput) {
         status,
         id,
         bizId
-      );
+      ]);
     } else {
-      db.prepare(`
+      await db.run(`
         INSERT INTO promotions 
         (id, business_id, type, title, title_ar, description, description_ar, image_url, item_id, discount_price, active_from, active_to, status) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
+      `, [
         id,
         bizId,
         data.type,
@@ -164,7 +164,7 @@ export async function savePromotion(data: SavePromotionInput) {
         data.active_from || null,
         data.active_to || null,
         status
-      );
+      ]);
     }
 
     revalidatePath("/business/promotions");
@@ -184,9 +184,9 @@ export async function togglePromotionStatus(id: string, newStatus: "ACTIVE" | "I
       return { success: false, error: "Not authenticated" };
     }
 
-    db.prepare(`
+    await db.run(`
       UPDATE promotions SET status = ? WHERE id = ? AND business_id = ?
-    `).run(newStatus, id, bizId);
+    `, [newStatus, id, bizId]);
 
     revalidatePath("/business/promotions");
     revalidatePath("/business/settings");
@@ -205,9 +205,9 @@ export async function deletePromotion(id: string) {
       return { success: false, error: "Not authenticated" };
     }
 
-    db.prepare(`
+    await db.run(`
       DELETE FROM promotions WHERE id = ? AND business_id = ?
-    `).run(id, bizId);
+    `, [id, bizId]);
 
     revalidatePath("/business/promotions");
     revalidatePath("/business/settings");

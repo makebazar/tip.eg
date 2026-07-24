@@ -6,11 +6,11 @@ import { revalidatePath } from "next/cache";
 
 export async function getOrCreateInviteLink(businessId: string, role: "MANAGER" | "STAFF" = "MANAGER") {
   try {
-    const existing = db.prepare(`
+    const existing = await db.get<{ token: string }>(`
       SELECT token FROM business_invites
       WHERE business_id = ? AND role = ?
       ORDER BY created_at DESC LIMIT 1
-    `).get(businessId, role) as { token: string } | undefined;
+    `, [businessId, role]);
 
     if (existing?.token) {
       return { success: true, token: existing.token };
@@ -19,10 +19,10 @@ export async function getOrCreateInviteLink(businessId: string, role: "MANAGER" 
     const token = `${role.toLowerCase()}-${businessId}-${Math.random().toString(36).substring(2, 9)}`;
     const inviteId = `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO business_invites (id, business_id, role, token)
       VALUES (?, ?, ?, ?)
-    `).run(inviteId, businessId, role, token);
+    `, [inviteId, businessId, role, token]);
 
     return { success: true, token };
   } catch (error: any) {
@@ -33,17 +33,17 @@ export async function getOrCreateInviteLink(businessId: string, role: "MANAGER" 
 
 export async function regenerateInviteLink(businessId: string, role: "MANAGER" | "STAFF" = "MANAGER") {
   try {
-    db.prepare(`
+    await db.run(`
       DELETE FROM business_invites WHERE business_id = ? AND role = ?
-    `).run(businessId, role);
+    `, [businessId, role]);
 
     const token = `${role.toLowerCase()}-${businessId}-${Math.random().toString(36).substring(2, 9)}`;
     const inviteId = `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO business_invites (id, business_id, role, token)
       VALUES (?, ?, ?, ?)
-    `).run(inviteId, businessId, role, token);
+    `, [inviteId, businessId, role, token]);
 
     revalidatePath("/business/locations");
     revalidatePath("/business/dashboard");
@@ -55,19 +55,19 @@ export async function regenerateInviteLink(businessId: string, role: "MANAGER" |
 
 export async function getInviteDetails(token: string) {
   try {
-    const row = db.prepare(`
-      SELECT bi.token, bi.role, bi.business_id, b.name as business_name, b.city, b.business_type
-      FROM business_invites bi
-      JOIN businesses b ON b.id = bi.business_id
-      WHERE bi.token = ?
-    `).get(token) as {
+    const row = await db.get<{
       token: string;
       role: "MANAGER" | "STAFF";
       business_id: string;
       business_name: string;
       city?: string;
       business_type?: string;
-    } | undefined;
+    }>(`
+      SELECT bi.token, bi.role, bi.business_id, b.name as business_name, b.city, b.business_type
+      FROM business_invites bi
+      JOIN businesses b ON b.id = bi.business_id
+      WHERE bi.token = ?
+    `, [token]);
 
     if (!row) {
       return { success: false, error: "Invalid or expired invitation link" };
@@ -78,7 +78,7 @@ export async function getInviteDetails(token: string) {
     let currentUser = null;
 
     if (currentUserId) {
-      currentUser = db.prepare("SELECT id, name, email FROM users WHERE id = ?").get(currentUserId) as { id: string; name: string; email: string } | undefined;
+      currentUser = await db.get<{ id: string; name: string; email: string }>("SELECT id, name, email FROM users WHERE id = ?", [currentUserId]);
     }
 
     return {
@@ -93,12 +93,12 @@ export async function getInviteDetails(token: string) {
 
 export async function acceptInvite(token: string, formData?: FormData) {
   try {
-    const inviteRow = db.prepare(`
+    const inviteRow = await db.get<{ token: string; role: string; business_id: string; business_name: string }>(`
       SELECT bi.token, bi.role, bi.business_id, b.name as business_name
       FROM business_invites bi
       JOIN businesses b ON b.id = bi.business_id
       WHERE bi.token = ?
-    `).get(token) as { token: string; role: string; business_id: string; business_name: string } | undefined;
+    `, [token]);
 
     if (!inviteRow) {
       return { success: false, error: "Invalid or expired invitation link" };
@@ -107,7 +107,6 @@ export async function acceptInvite(token: string, formData?: FormData) {
     const cookieStore = await cookies();
     let userId = cookieStore.get("business_user_id")?.value || null;
 
-    // If user is not logged in, register / log in user from formData
     if (!userId) {
       if (!formData) {
         return { success: false, error: "Please log in or fill out the registration form" };
@@ -121,26 +120,24 @@ export async function acceptInvite(token: string, formData?: FormData) {
         return { success: false, error: "Email and password are required" };
       }
 
-      let existingUser = db.prepare("SELECT id, role_id FROM users WHERE email = ?").get(email) as { id: string; role_id: number } | undefined;
+      let existingUser = await db.get<{ id: string; role_id: number }>("SELECT id, role_id FROM users WHERE email = ?", [email]);
 
       if (!existingUser) {
         userId = `usr-${Date.now()}`;
         const userName = name || email.split("@")[0];
         const roleId = inviteRow.role === "MANAGER" ? 2 : 3;
 
-        db.prepare(`
+        await db.run(`
           INSERT INTO users (id, name, email, password_hash, role_id, business_id)
           VALUES (?, ?, ?, ?, ?, ?)
-        `).run(userId, userName, email, password, roleId, inviteRow.business_id);
+        `, [userId, userName, email, password, roleId, inviteRow.business_id]);
       } else {
         userId = existingUser.id;
-        // Promote individual staff to manager if joining as manager
         if (inviteRow.role === "MANAGER" && existingUser.role_id === 3) {
-          db.prepare("UPDATE users SET role_id = 2 WHERE id = ?").run(userId);
+          await db.run("UPDATE users SET role_id = 2 WHERE id = ?", [userId]);
         }
       }
 
-      // Set auth cookies
       cookieStore.set("business_user_id", userId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -149,31 +146,31 @@ export async function acceptInvite(token: string, formData?: FormData) {
       });
     }
 
-    // Link user to business
     if (inviteRow.role === "MANAGER") {
       const ubId = `ub-${userId}-${inviteRow.business_id}`;
-      db.prepare(`
-        INSERT OR IGNORE INTO user_businesses (id, user_id, business_id, role)
-        VALUES (?, ?, ?, 'MANAGER')
-      `).run(ubId, userId, inviteRow.business_id);
+      await db.run(`
+        INSERT INTO user_businesses (id, user_id, business_id, role)
+        VALUES (?, ?, ?, 'MANAGER') ON CONFLICT DO NOTHING
+      `, [ubId, userId, inviteRow.business_id]);
 
-      db.prepare("UPDATE users SET business_id = ? WHERE id = ? AND business_id IS NULL").run(inviteRow.business_id, userId);
+      await db.run("UPDATE users SET business_id = ? WHERE id = ? AND business_id IS NULL", [inviteRow.business_id, userId]);
     } else {
-      // Staff member linking into business_members and individual_profiles
       const memberId = `bm-${userId}-${inviteRow.business_id}`;
       const indProfileId = `ind-${userId}`;
 
-      db.transaction(() => {
-        db.prepare(`
-          INSERT OR IGNORE INTO individual_profiles (id, name, business_id, role)
-          VALUES (?, (SELECT name FROM users WHERE id = ?), ?, 'WAITER')
-        `).run(indProfileId, userId, inviteRow.business_id);
+      await db.transaction(async (tx) => {
+        await tx`
+          INSERT INTO individual_profiles (id, user_id, business_id, role, short_code)
+          VALUES (${indProfileId}, ${userId}, ${inviteRow.business_id}, 'WAITER', ${Math.random().toString(36).substring(2, 7)})
+          ON CONFLICT DO NOTHING
+        `;
 
-        db.prepare(`
-          INSERT OR IGNORE INTO business_members (id, business_id, individual_id, role, status)
-          VALUES (?, ?, ?, 'WAITER', 'ACTIVE')
-        `).run(memberId, inviteRow.business_id, indProfileId);
-      })();
+        await tx`
+          INSERT INTO business_members (id, business_id, individual_id, role, status)
+          VALUES (${memberId}, ${inviteRow.business_id}, ${indProfileId}, 'WAITER', 'ACTIVE')
+          ON CONFLICT DO NOTHING
+        `;
+      });
     }
 
     cookieStore.set("business_id", inviteRow.business_id, {

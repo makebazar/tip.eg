@@ -1,6 +1,6 @@
 import React from "react";
 import { UnifiedLoginForm } from "@/components/auth/UnifiedLoginForm";
 
-export default function AdminLoginPage() {
-  return <UnifiedLoginForm defaultRole="admin" />;
+export default function LoginPage() {
+  return <UnifiedLoginForm defaultRole="business" />;
 }

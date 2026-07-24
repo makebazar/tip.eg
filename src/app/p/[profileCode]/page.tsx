@@ -13,8 +13,7 @@ interface PageProps {
 export default async function PersonalTipPage({ params }: PageProps) {
   const { profileCode } = (await params) as { profileCode: string };
 
-  // Fetch staff profile by its short_code
-  const waiter = db.prepare(`
+  const waiter = await db.get(`
     SELECT 
       wp.id, wp.avatar_url, wp.balance, wp.rating, wp.saving_goal, wp.saving_goal_ar, wp.business_id as restaurant_id, wp.role,
       u.name as name, u.name_ar as name_ar,
@@ -23,27 +22,25 @@ export default async function PersonalTipPage({ params }: PageProps) {
     JOIN users u ON u.id = wp.user_id
     LEFT JOIN businesses r ON r.id = wp.business_id
     WHERE wp.short_code = ?
-  `).get(profileCode) as any;
+  `, [profileCode]);
 
   if (!waiter) {
     notFound();
   }
 
-  // Fetch bartender profile for this business
-  const bartender = waiter.restaurant_id ? db.prepare(`
+  const bartender = waiter.restaurant_id ? await db.get(`
     SELECT wp.id, wp.avatar_url, wp.balance, wp.rating, wp.saving_goal, wp.saving_goal_ar, u.name, u.name_ar
     FROM individual_profiles wp
     JOIN users u ON u.id = wp.user_id
     WHERE wp.business_id = ? AND wp.id = ?
-  `).get(waiter.restaurant_id, `bartender-rest-${waiter.restaurant_id}`) as any : null;
+  `, [waiter.restaurant_id, `bartender-rest-${waiter.restaurant_id}`]) : null;
 
-  // Fetch kitchen profile for this business
-  const kitchen = waiter.restaurant_id ? db.prepare(`
+  const kitchen = waiter.restaurant_id ? await db.get(`
     SELECT wp.id, wp.avatar_url, wp.balance, wp.rating, wp.saving_goal, wp.saving_goal_ar, u.name, u.name_ar
     FROM individual_profiles wp
     JOIN users u ON u.id = wp.user_id
     WHERE wp.business_id = ? AND wp.id = ?
-  `).get(waiter.restaurant_id, `kitchen-rest-${waiter.restaurant_id}`) as any : null;
+  `, [waiter.restaurant_id, `kitchen-rest-${waiter.restaurant_id}`]) : null;
 
   return (
     <TableStateProvider 

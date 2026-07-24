@@ -17,15 +17,14 @@ export async function GET(request: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const sendUpdate = () => {
+      const sendUpdate = async () => {
         try {
-          // Fetch the active UNPAID bill for this spot
-          const bill = db.prepare(`
+          const bill = await db.get(`
             SELECT * FROM bills 
             WHERE spot_id = ? AND status = 'UNPAID'
             ORDER BY created_at DESC 
             LIMIT 1
-          `).get(spotId) as any;
+          `, [spotId]);
 
           const payloadStr = JSON.stringify({ bill: bill || null });
           controller.enqueue(encoder.encode(`data: ${payloadStr}\n\n`));
@@ -34,22 +33,18 @@ export async function GET(request: Request) {
         }
       };
 
-      // 1. Send initial data immediately
-      sendUpdate();
+      await sendUpdate();
 
-      // 2. Attach listener to the global event bus
       eventBus.on(eventName, sendUpdate);
 
-      // 3. Keep connection alive with periodic pings
       const pingInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: ping\n\n`));
         } catch (e) {
           clearInterval(pingInterval);
         }
-      }, 15000); // 15 seconds
+      }, 15000);
 
-      // 4. Clean up when client disconnects
       request.signal.addEventListener("abort", () => {
         clearInterval(pingInterval);
         eventBus.off(eventName, sendUpdate);

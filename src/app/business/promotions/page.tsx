@@ -16,7 +16,7 @@ export default async function BusinessPromotionsPage() {
     redirect("/business/login");
   }
 
-  const business = db.prepare("SELECT * FROM businesses WHERE id = ?").get(businessId) as { id: string; name: string } | undefined;
+  const business = await db.get<{ id: string; name: string }>("SELECT * FROM businesses WHERE id = ?", [businessId]);
 
   if (!business) {
     cookieStore.delete("business_id");

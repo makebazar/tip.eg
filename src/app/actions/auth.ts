@@ -14,14 +14,14 @@ export async function loginIndividual(formData: FormData) {
   }
 
   // Find user with STAFF role
-  const user = db.prepare("SELECT * FROM users WHERE email = ? AND role_id = ?").get(email, SystemRole.STAFF) as any;
+  const user = await db.get<any>("SELECT * FROM users WHERE email = ? AND role_id = ?", [email, SystemRole.STAFF]);
 
   if (!user || user.password_hash !== password) {
     return { error: "Invalid email or password" };
   }
 
   // Get their individual profile id
-  const profile = db.prepare("SELECT id FROM individual_profiles WHERE user_id = ?").get(user.id) as any;
+  const profile = await db.get<any>("SELECT id FROM individual_profiles WHERE user_id = ?", [user.id]);
 
   if (!profile) {
     return { error: "Individual profile not set up" };
@@ -54,7 +54,7 @@ export async function loginBusiness(formData: FormData) {
   }
 
   // Find user with BUSINESS_MANAGER role
-  const user = db.prepare("SELECT * FROM users WHERE email = ? AND role_id = ?").get(email, SystemRole.BUSINESS_MANAGER) as any;
+  const user = await db.get<any>("SELECT * FROM users WHERE email = ? AND role_id = ?", [email, SystemRole.BUSINESS_MANAGER]);
 
   if (!user || user.password_hash !== password) {
     return { error: "Invalid email or password" };
@@ -70,16 +70,16 @@ export async function loginBusiness(formData: FormData) {
   });
 
   // Find accessible businesses from user_businesses table or legacy user.business_id
-  let userBizRows = db.prepare(`
+  let userBizRows = await db.all<{ business_id: string }>(`
     SELECT business_id FROM user_businesses WHERE user_id = ?
-  `).all(user.id) as { business_id: string }[];
+  `, [user.id]);
 
   if (userBizRows.length === 0 && user.business_id) {
     // Insert legacy link into user_businesses if missing
-    db.prepare(`
-      INSERT OR IGNORE INTO user_businesses (id, user_id, business_id, role)
-      VALUES (?, ?, ?, 'OWNER')
-    `).run(`ub-${user.id}-${user.business_id}`, user.id, user.business_id);
+    await db.run(`
+      INSERT INTO user_businesses (id, user_id, business_id, role)
+      VALUES (?, ?, ?, 'OWNER') ON CONFLICT DO NOTHING
+    `, [`ub-${user.id}-${user.business_id}`, user.id, user.business_id]);
 
     userBizRows = [{ business_id: user.business_id }];
   }
@@ -115,7 +115,7 @@ export async function loginAdmin(formData: FormData) {
   }
 
   // Find user with SUPER_ADMIN role
-  const user = db.prepare("SELECT * FROM users WHERE email = ? AND role_id = ?").get(email, SystemRole.SUPER_ADMIN) as any;
+  const user = await db.get<any>("SELECT * FROM users WHERE email = ? AND role_id = ?", [email, SystemRole.SUPER_ADMIN]);
 
   if (!user || user.password_hash !== password) {
     return { error: "Invalid email or password" };
